@@ -19,6 +19,22 @@ a:hover {
 	font-family: 'Helvetica Bold';
 }
 
+#upload-progress {
+	display: none;
+	margin-bottom: 10px;
+}
+
+.progress-bg {
+	width: 100%;
+	background-color: #DDD;
+}
+
+.progress-fg {
+	width: 0%;
+	height: 2px;
+	background-color: #0454A0;
+}
+
 .actions {
 	border-bottom: 1px dashed #CCC;
 	margin-bottom: 20px;
@@ -34,6 +50,10 @@ a:hover {
 
 i {
 	margin-right: 0.5rem;
+}
+
+#files {
+	display: none;
 }
 
 thead {
