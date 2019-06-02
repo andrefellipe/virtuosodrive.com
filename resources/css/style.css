@@ -1,0 +1,69 @@
+body {
+	font-family: 'Helvetica';
+}
+
+a {
+	text-decoration: none;
+	color: #000;
+}
+
+a:hover {
+	text-decoration: none;
+}
+
+.breadcrumb {
+	background-color: #FFF;
+}
+
+.breadcrumb-item {
+	font-family: 'Helvetica Bold';
+}
+
+.actions {
+	border-bottom: 1px dashed #CCC;
+	margin-bottom: 20px;
+}
+
+.action-button {
+	display: flex;
+	padding: 0.4rem;
+	margin: 0.25rem;
+	justify-content: center;
+	align-items: center;
+}
+
+i {
+	margin-right: 0.5rem;
+}
+
+thead {
+	font-family: 'Helvetica Bold';
+	border-bottom: 1px solid #CCC;
+}
+
+.selected {
+	background-color: #99F0FA;
+}
+
+.fit {
+	width: 1px;
+}
+
+tbody tr {
+	cursor: pointer;
+}
+
+footer {
+	font-size: 1rem;
+	text-align: center;
+}
+
+@font-face {
+  font-family: 'Helvetica';
+  src: url('../fonts/Helvetica.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Helvetica Bold';
+  src: url('../fonts/Helvetica-Bold.ttf') format('truetype');
+}
