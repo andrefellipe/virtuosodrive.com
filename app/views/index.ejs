@@ -26,7 +26,7 @@
 			<img src="images/af.png" alt="AF Logo">
 		</div>
 
-		<nav aria-label="breadcrumb">
+		<nav aria-label="breadcrumb" id="nav-breadcrumb">
 
 			<ol class="breadcrumb">
 				<li class="breadcrumb-item"><a href="#">All</a></li>
@@ -46,7 +46,7 @@
 								src="images/icons/folder-plus.svg" height="40px" width="40px" /></i>New Folder</a>
 					<a href="#" id="download-trigger" class="action-button col-md"><i><img
 								src="images/icons/download.svg" height="40px" width="40px" /></i>Download</a>
-					<a href="#" id="new-folder-trigger" class="action-button col-md"><i><img
+					<a href="#" id="rename-trigger" class="action-button col-md"><i><img
 								src="images/icons/rename.svg" height="40px" width="40px" /></i>Rename</a>
 					<a href="#" id="delete-trigger" class="action-button col-md"><i><img src="images/icons/trash.svg"
 								height="40px" width="40px" /></i>Delete</a>
@@ -54,44 +54,36 @@
 			</div>
 
 			<div id="upload-progress">
-				<small>Sending: <span class="timeleft">8 minutes left</span></small>
+				<small>Sending: <span class="timeleft"></span></small>
 				<div class="progress-bg">
 					<div class="progress-fg"></div>
 				</div>
 			</div>
 
-			<div class="assets">
-				<table class="table table-borderless">
-					<thead>
-						<tr>
-							<th class="fit">&nbsp;</th>
-							<th>Name</th>
-							<th>Size</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr>
-							<td><img src="images/icons/folder.svg" height="30px" width="30px" /></td>
-							<td>Trabalho de Conclusão de Curso</td>
-							<td>0 Files</td>
-						</tr>
-						<tr class="selected">
-							<td><img src="images/icons/pdf.svg" height="30px" width="30px" /></td>
-							<td>Projeto Político Pedagógico de Engenharia Elétrica.pdf</td>
-							<td>946.8 KB</td>
-						</tr>
-
-					</tbody>
-				</table>
-			</div>
+			<table class="table table-borderless" id="table-files">
+				<thead>
+					<tr>
+						<th class="fit">&nbsp;</th>
+						<th>Name</th>
+						<th>Size</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
 
 		</div>
 
 		<footer>
 			<strong>&copy; 2019 <a href="https://andrefellipe.com" target="_blank">André Fellipe</a></strong>
+			<p><small><a href="https://github.com/andrefellipe/virtuosodrive.com" target="_blank">Check Virtuoso on GitHub</a></small></p>
 		</footer>
 
 	</div>
+
+	<script src="https://www.gstatic.com/firebasejs/6.1.0/firebase-app.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/6.1.0/firebase-database.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/6.1.0/firebase-storage.js"></script>
 
 	<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
 		integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"

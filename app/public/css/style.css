@@ -1,5 +1,9 @@
 body {
 	font-family: 'Helvetica';
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
 }
 
 a {
@@ -38,6 +42,10 @@ a:hover {
 .actions {
 	border-bottom: 1px dashed #CCC;
 	margin-bottom: 20px;
+}
+
+#download-trigger, #rename-trigger, #delete-trigger {
+	display: none;
 }
 
 .action-button {
@@ -79,11 +87,11 @@ footer {
 }
 
 @font-face {
-  font-family: 'Helvetica';
-  src: url('../fonts/Helvetica.ttf') format('truetype');
+	font-family: 'Helvetica';
+	src: url('../fonts/Helvetica.ttf') format('truetype');
 }
 
 @font-face {
-  font-family: 'Helvetica Bold';
-  src: url('../fonts/Helvetica-Bold.ttf') format('truetype');
+	font-family: 'Helvetica Bold';
+	src: url('../fonts/Helvetica-Bold.ttf') format('truetype');
 }
