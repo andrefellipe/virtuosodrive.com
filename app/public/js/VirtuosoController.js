@@ -14,7 +14,7 @@ class VirtuosoController {
         this.inputFilesEl = document.querySelector('#files');
         this.uploadProgressBarEl = document.querySelector('#upload-progress');
         this.progressBarFgEl = this.uploadProgressBarEl.querySelector('.progress-fg');
-        this.timeleftEl = this.uploadProgressBarEl.querySelector('.timeleft');
+        this.timeleftEl = document.querySelector('.timeleft');
         this.listFilesEl = document.querySelector('#table-files tbody');
 
         this.connectFirebase();
@@ -42,7 +42,12 @@ class VirtuosoController {
         switch (file.type) {
 
             case 'folder':
+
                 return `<td><img src="images/icons/folder.svg" height="30px" width="30px" /></td>`;
+
+            case 'text/plain':
+
+                return `<td><img src="images/icons/txt.svg" height="30px" width="30px" /></td>`;
 
             case 'image/jpeg':
             case 'image/jpg':
@@ -62,8 +67,49 @@ class VirtuosoController {
 
             case 'video/mp4':
             case 'video/quicktime':
+            case 'video/avi':
+            case 'video/msvideo':
+            case 'video/x-msvideo':
 
                 return `<td><img src="images/icons/audio.svg" height="30px" width="30px" /></td>`;
+
+            case 'application/msword':
+            case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            case 'application/vnd.openxmlformats-officedocument.wordprocessingml.template':
+            case 'application/vnd.ms-word.document.macroEnabled.12':
+            case 'application/vnd.ms-word.template.macroEnabled.12':
+
+                return `<td><img src="images/icons/word.svg" height="30px" width="30px" /></td>`;
+
+            case 'application/vnd.ms-excel':
+            case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            case 'application/vnd.openxmlformats-officedocument.spreadsheetml.template':
+            case 'application/vnd.ms-excel.sheet.macroEnabled.12':
+            case 'application/vnd.ms-excel.template.macroEnabled.12':
+            case 'application/vnd.ms-excel.addin.macroEnabled.12':
+            case 'application/vnd.ms-excel.sheet.binary.macroEnabled.12':
+
+                return `<td><img src="images/icons/excel.svg" height="30px" width="30px" /></td>`;
+
+            case 'application/vnd.ms-powerpoint':
+            case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+            case 'application/vnd.openxmlformats-officedocument.presentationml.template':
+            case 'application/vnd.openxmlformats-officedocument.presentationml.slideshow':
+            case 'application/vnd.ms-powerpoint.addin.macroEnabled.12':
+            case 'application/vnd.ms-powerpoint.presentation.macroEnabled.12':
+            case 'application/vnd.ms-powerpoint.template.macroEnabled.12':
+            case 'application/vnd.ms-powerpoint.slideshow.macroEnabled.12':
+
+                return `<td><img src="images/icons/powerpoint.svg" height="30px" width="30px" /></td>`;
+
+            case 'application/x-rar-compressed':
+            case 'application/octet-stream':
+            case 'application/zip':
+            case 'application/octet-stream':
+            case 'application/x-zip-compressed':
+            case 'multipart/x-zip':
+
+                return `<td><img src="images/icons/zip.svg" height="30px" width="30px" /></td>`;
 
             default:
 
@@ -76,11 +122,13 @@ class VirtuosoController {
 
         if (!size) return '';
 
-        if (size > 1024 * 1024 * 1024) return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        if (size >= 1024 * 1024 * 1024) return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 
-        if (size > 1024 * 1024) return (size / (1024 * 1024)).toFixed(2) + ' MB';
+        if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(2) + ' MB';
 
-        if (size > 1024) return (size / 1024).toFixed(2) + ' kB';
+        if (size >= 1024) return (size / 1024).toFixed(2) + ' kB';
+
+        if (size < 1024) return size + ' bytes';
 
 
     }
@@ -110,6 +158,7 @@ class VirtuosoController {
                     this.openFolder();
                     break;
                 default:
+
                     firebase.storage().ref(file.path).getDownloadURL().then(url => {
 
                         window.open(url);
@@ -118,7 +167,7 @@ class VirtuosoController {
 
                         console.error(err);
 
-                    })
+                    });
 
             }
 
@@ -365,13 +414,23 @@ class VirtuosoController {
             let tr = this.getSelection()[0];
             let file = JSON.parse(tr.dataset.file);
 
-            let name = prompt("Rename file:", file.name);
+            if (file.type !== 'folder') {
 
-            if (name) {
+                let name = prompt("Rename file:", file.name.substring(0, file.name.lastIndexOf('.')));
+                let extension = file.name.substring(file.name.lastIndexOf('.'), file.name.length);
 
-                file.name = name;
+                if (name && extension) {
 
-                this.getFirebaseRef().child(tr.dataset.key).set(file);
+                    file.name = name + extension;
+
+                    this.getFirebaseRef().child(tr.dataset.key).set(file);
+
+                }
+
+            } else {
+
+                // to do
+                alert("Folders can't be renamed yet. Sorry!");
 
             }
 
@@ -379,22 +438,28 @@ class VirtuosoController {
 
         this.trgDeleteEl.addEventListener('click', e => {
 
-            this.removeTask().then(responses => {
+            let userConfirm = confirm("Do you want to permanently delete this?");
 
-                responses.forEach(response => {
+            if (userConfirm) {
 
-                    if (response.fields.key) {
+                this.removeTask().then(responses => {
 
-                        this.getFirebaseRef().child(response.fields.key).remove();
-                    }
-
+                    responses.forEach(response => {
+    
+                        if (response.fields.key) {
+    
+                            this.getFirebaseRef().child(response.fields.key).remove();
+                        }
+    
+                    });
+    
+                }).catch(err => {
+    
+                    console.error(err);
+    
                 });
 
-            }).catch(err => {
-
-                console.error(err);
-
-            });
+            }
 
         });
 
@@ -416,6 +481,43 @@ class VirtuosoController {
 
         });
 
+        this.trgDownloadFilesEl.addEventListener('click', e => {
+
+            this.getSelection().forEach(file => {
+
+                let filePath = (JSON.parse(file.dataset.file)).path;
+                let fileName = (JSON.parse(file.dataset.file)).name;
+
+                firebase.storage().ref(filePath).getDownloadURL().then(fileURL => {
+
+                    let xhr = new XMLHttpRequest();
+                    xhr.responseType = 'blob';
+                    xhr.onload = e => {
+                        let blob = xhr.response;
+                        this.donwloadFile(blob, fileName);
+                    };
+                    xhr.open('GET', fileURL);
+                    xhr.send();
+
+                }).catch(err => {
+
+                    console.error(err);
+
+                });
+
+            });
+
+        });
+
+    }
+
+    donwloadFile(blob, fileName) {
+
+        let a = document.createElement('a');
+        a.href = window.URL.createObjectURL(blob);
+        a.download = fileName;
+        a.dispatchEvent(new MouseEvent('click'));
+
     }
 
     uploadTask(files) {
@@ -426,9 +528,29 @@ class VirtuosoController {
 
             promises.push(new Promise((resolve, reject) => {
 
+                let databaseRef = this.getFirebaseRef(this.currentFolder.join('/'));
+                let path = this.currentFolder.join('/') + '/' + file.name;
+
+                databaseRef.once('value', snapshot => {
+
+                    snapshot.forEach(child => {
+
+                        if (path === child.val().path) {
+
+                            alert("Upload failed. Rename the file before giving another try.");
+
+                            reject(child.val());
+
+                        }
+
+                    });
+                });
+
                 let fileRef = firebase.storage().ref(this.currentFolder.join('/')).child(file.name);
 
                 let task = fileRef.put(file);
+
+                this.startUploadTime = Date.now();
 
                 task.on('state_changed', snapshot => {
 
@@ -464,12 +586,12 @@ class VirtuosoController {
 
     }
 
-    uploadProgress(event, file) {
+    uploadProgress(event) {
 
         let timeSpent = Date.now() - this.startUploadTime;
         let loaded = event.loaded;
         let total = event.total;
-        let porcent = parseInt((loaded / total) * 100);
+        let porcent = (loaded / total) * 100;
         let timeLeft = ((100 - porcent) * timeSpent) / porcent;
 
         this.progressBarFgEl.style.width = `${porcent}%`;
@@ -488,11 +610,11 @@ class VirtuosoController {
         }
 
         if (minutes > 0) {
-            return ` - ${minutes} minutes and ${seconds} seconds left`;
+            return `${minutes} minutes and ${seconds} seconds left`;
         }
 
         if (seconds > 0) {
-            return ` - ${seconds} seconds left`;
+            return `${seconds} seconds left`;
         }
 
         return '';

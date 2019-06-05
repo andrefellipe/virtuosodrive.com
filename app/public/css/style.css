@@ -19,10 +19,6 @@ a:hover {
 	background-color: #FFF;
 }
 
-.breadcrumb-item {
-	font-family: 'Helvetica Bold';
-}
-
 #upload-progress {
 	display: none;
 	margin-bottom: 10px;
@@ -65,7 +61,6 @@ i {
 }
 
 thead {
-	font-family: 'Helvetica Bold';
 	border-bottom: 1px solid #CCC;
 }
 
@@ -89,9 +84,4 @@ footer {
 @font-face {
 	font-family: 'Helvetica';
 	src: url('../fonts/Helvetica.ttf') format('truetype');
-}
-
-@font-face {
-	font-family: 'Helvetica Bold';
-	src: url('../fonts/Helvetica-Bold.ttf') format('truetype');
 }
