@@ -501,7 +501,7 @@ class VirtuosoController {
 
                 }).catch(err => {
 
-                    console.error(err);
+                    alert("You can't download a folder yet. Choose only files.");
 
                 });
 
@@ -647,8 +647,8 @@ class VirtuosoController {
         if (this.lastFolder) this.getFirebaseRef(this.lastFolder).off('value');
 
         this.clearSelection();
-        this.renderNav();
         this.readFiles();
+        this.renderNav();
 
     }
 
