@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<meta name="description"
+		content="File-sharing system for the electrical engineering students of my university. It offers resolutions to homeworks, exams and materials to improve academic performance.">
+	<meta name="author" content="André Fellipe">
+
+	<link href="css/reset.css" type="text/css" rel="stylesheet">
+	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+		integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+	<link href="css/style.css" rel="stylesheet">
+	<link rel="shortcut icon" href="images/icons/favicon.ico" type="image/x-icon" />
+
+	<title>Virtuoso Drive</title>
+
+</head>
+
+<body>
+
+	<div class="container">
+
+		<div class="d-flex justify-content-center p-3 m-2">
+			<img src="images/af.png" alt="AF Logo">
+		</div>
+
+		<nav aria-label="breadcrumb" id="nav-breadcrumb">
+
+			<ol class="breadcrumb">
+				<li class="breadcrumb-item"><a href="#">All</a></li>
+				<li class="breadcrumb-item active" aria-current="page">1º Período</li>
+			</ol>
+
+		</nav>
+
+		<div class="folder-content">
+
+			<div class="actions">
+				<div class="row">
+					<a href="#" id="upload-trigger" class="action-button col-md"><i><img src="images/icons/upload.svg"
+								height="40px" width="40px" /></i>Upload</a>
+					<input type="file" id="files" multiple>
+					<a href="#" id="new-folder-trigger" class="action-button col-md"><i><img
+								src="images/icons/folder-plus.svg" height="40px" width="40px" /></i>New Folder</a>
+					<a href="#" id="download-trigger" class="action-button col-md"><i><img
+								src="images/icons/download.svg" height="40px" width="40px" /></i>Download</a>
+					<a href="#" id="rename-trigger" class="action-button col-md"><i><img
+								src="images/icons/rename.svg" height="40px" width="40px" /></i>Rename</a>
+					<a href="#" id="delete-trigger" class="action-button col-md"><i><img src="images/icons/trash.svg"
+								height="40px" width="40px" /></i>Delete</a>
+				</div>
+			</div>
+
+			<div id="upload-progress">
+				<small>Sending... <span class="timeleft"></span></small>
+				<div class="progress-bg">
+					<div class="progress-fg"></div>
+				</div>
+			</div>
+
+			<table class="table table-borderless" id="table-files">
+				<thead>
+					<tr>
+						<th class="fit">&nbsp;</th>
+						<th>Name</th>
+						<th>Size</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+
+		</div>
+
+		<footer>
+			<strong>&copy; 2019 <a href="https://andrefellipe.com" target="_blank">André Fellipe</a></strong>
+			<p><small><a href="https://github.com/andrefellipe/virtuosodrive.com" target="_blank">Check Virtuoso on GitHub</a></small></p>
+		</footer>
+
+	</div>
+
+	<script src="https://www.gstatic.com/firebasejs/6.1.0/firebase-app.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/6.1.0/firebase-database.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/6.1.0/firebase-storage.js"></script>
+
+	<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+		integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"
+		crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+		integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+		crossorigin="anonymous"></script>
+	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+		integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+		crossorigin="anonymous"></script>
+	<script src="js/VirtuosoController.js"></script>
+	<script src="js/index.js"></script>
+
+</body>
+
+</html>
