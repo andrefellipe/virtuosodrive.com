@@ -82,15 +82,13 @@
 
 
 
-- **Active Unit**: u3-browsing
 
-- **Unit Stage**: code-generation
 
-- **Unit State**: paused
 
-- **Unit Pause Reason**: The maintainer chose to deploy U1 before U3 code is written
 
-- **Unit Next Action**: Write the U3 code plan once U1 is deployed to both environments and the maintainer has seen it working. Carry in: icons are the maintainer own or free to use; build the full compatibility check in U3
+
+
+
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -152,7 +150,7 @@
 - **Current Stage**: functional-design
 - **Next Stage**: nfr-requirements
 - **Status**: Running
-- **Last Updated**: 2026-11-26T21:08:20Z
+- **Last Updated**: 2026-11-26T21:45:49Z
 
 - **Construction Autonomy Mode**: autonomous
 

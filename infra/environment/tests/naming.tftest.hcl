@@ -12,11 +12,6 @@ mock_provider "aws" {
       region = "us-east-1"
     }
   }
-  mock_data "aws_availability_zones" {
-    defaults = {
-      names = ["us-east-1a", "us-east-1b", "us-east-1c"]
-    }
-  }
 }
 
 variables {
@@ -55,6 +50,11 @@ run "test_names_carry_the_test_prefix" {
   assert {
     condition     = output.prefix == "vd-test"
     error_message = "The test environment's prefix must be vd-test."
+  }
+
+  assert {
+    condition     = join(",", module.network.subnet_availability_zones) == "us-east-1a,us-east-1b"
+    error_message = "The two private subnets must be in us-east-1a and us-east-1b, in that order, and nowhere else."
   }
 }
 

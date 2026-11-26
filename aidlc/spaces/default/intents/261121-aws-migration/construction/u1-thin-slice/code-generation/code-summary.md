@@ -103,6 +103,39 @@ All in the one-time setup, which no local test covered before:
 
 Still open from that review, for the maintainer: the repository's owner name on GitHub and the site's domain appear in committed files (`infra/setup/variables.tf`, `infra/setup/github-settings.sh`, the two `.tfvars` files, `go-back.yml`, `server/openapi.yaml`, `docs/operations.md` and tests). Both are public by their nature, but the maintainer has not said whether they may be committed. The site's name is also written in more than one place.
 
+## Corrected after the pull request's first scan
+
+The infrastructure scan (Checkov 3.4.11) failed 6 of 187 checks on its first
+run on the pull request. Each is now fixed, or excepted with its reason
+written inside the resource concerned. No check is switched off for the whole
+project, and `.checkov.yaml` is unchanged.
+
+| Finding | Where | What was done |
+|---------|-------|---------------|
+| `CKV_AWS_259`, transport security header (2 findings) | The two response-header rules, `pages` and `server`, in `infra/modules/edge/main.tf` | Tightened: the header now covers every name beneath the site's (`include_subdomains = true`), still for one year. "Preload" stays off, so the check still fails, and the exception is recorded on both rules: preload asks browsers to build the rule in for the whole registered domain, which holds other sites of the maintainer's and is not this project's to commit |
+| `CKV_AWS_394`, Availability Zones looked up, not named (1 finding) | `infra/modules/network/main.tf` | Fixed: the lookup is gone. The module has a variable `availability_zones`, default `us-east-1a` and `us-east-1b`, refused unless it names exactly two different zones. A looked-up list can change when AWS adds a zone, which would move a subnet and the database in it |
+| `CKV2_AWS_5`, security groups reported as unattached (3 findings) | The groups `database`, `server` and `migrate` in `infra/modules/network/main.tf` | Excepted, as a false alarm: the first is attached to the database in the database module and the other two to the two functions in the server module, each of which receives the group's identifier. The scan does not follow an identifier from one module to another |
+
+With that:
+
+- The network module has a new output, `subnet_availability_zones`, so that a test can read where the subnets are.
+- The two Terraform test files no longer carry a stand-in for the zone lookup, and `naming.tftest.hcl` has one more assertion: the two subnets are in `us-east-1a` and `us-east-1b`, in that order. The number of test runs is unchanged (5 in `infra/environment`, 3 in `infra/setup`).
+- The access gate's own header in `edge/src/gate.ts` is unchanged: its 401 answer still sends the one-year header without the names beneath.
+- The zones' default is written for us-east-1. An environment in another Region would have to pass its own two zones to the module; the environment definition does not pass them today.
+
+Run on 2026-11-26, before commit:
+
+| Command | Result |
+|---------|--------|
+| `terraform fmt -check -recursive infra` | Clean |
+| `terraform -chdir=infra/environment validate` | Valid |
+| `terraform -chdir=infra/setup validate` | Valid |
+| `terraform -chdir=infra/environment test` | 5 runs passed, 0 failed |
+| `terraform -chdir=infra/setup test` | 3 runs passed, 0 failed |
+| `checkov --config-file .checkov.yaml` (3.4.11, in a temporary Python environment, since removed) | 181 passed, 0 failed, 78 skipped |
+| `npm run check` | Ran through to its last step: format, lint, type check, tests with coverage (lines 91.64%, 757 of 826), build, repository checks (774 files) |
+| `npx vitest run server db-migrate web edge scripts` | 26 files, 189 tests passed, 0 failed |
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.

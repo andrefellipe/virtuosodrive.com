@@ -13,11 +13,6 @@ mock_provider "aws" {
       region = "us-east-1"
     }
   }
-  mock_data "aws_availability_zones" {
-    defaults = {
-      names = ["us-east-1a", "us-east-1b", "us-east-1c"]
-    }
-  }
 }
 
 variables {

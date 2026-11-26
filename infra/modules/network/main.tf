@@ -13,12 +13,21 @@ variable "cidr_block" {
   type        = string
 }
 
+# Named, not looked up: a looked-up list can change when AWS adds a zone,
+# which would move a subnet and the database in it.
+variable "availability_zones" {
+  description = "The two Availability Zones of the two private subnets, in order. Exactly two, and different."
+  type        = list(string)
+  default     = ["us-east-1a", "us-east-1b"]
+
+  validation {
+    condition     = length(var.availability_zones) == 2 && length(distinct(var.availability_zones)) == 2
+    error_message = "Name exactly two different Availability Zones."
+  }
+}
+
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
-
-data "aws_availability_zones" "available" {
-  state = "available"
-}
 
 resource "aws_vpc" "this" {
   # checkov:skip=CKV2_AWS_11: Flow logs would add log charges to a network that has no route to the internet; the server's and the entry point's own logs record every request.
@@ -40,7 +49,7 @@ resource "aws_subnet" "private" {
   count                   = 2
   vpc_id                  = aws_vpc.this.id
   cidr_block              = cidrsubnet(var.cidr_block, 4, count.index)
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  availability_zone       = var.availability_zones[count.index]
   map_public_ip_on_launch = false
 
   tags = { Name = "${var.prefix}-private-${count.index + 1}" }
@@ -62,6 +71,7 @@ resource "aws_route_table_association" "private" {
 # Security groups. Rules are separate resources so that groups can refer to each other.
 
 resource "aws_security_group" "database" {
+  # checkov:skip=CKV2_AWS_5: Attached to the database instance in the database module, which receives this group's identifier; the check does not follow it across modules.
   name        = "${var.prefix}-db"
   description = "The database: accepts PostgreSQL only from the server and the change runner"
   vpc_id      = aws_vpc.this.id
@@ -70,6 +80,7 @@ resource "aws_security_group" "database" {
 }
 
 resource "aws_security_group" "server" {
+  # checkov:skip=CKV2_AWS_5: Attached to the server function in the server module, which receives this group's identifier; the check does not follow it across modules.
   name        = "${var.prefix}-server"
   description = "The server function: no inbound; outbound only to the database and the secrets endpoint"
   vpc_id      = aws_vpc.this.id
@@ -78,6 +89,7 @@ resource "aws_security_group" "server" {
 }
 
 resource "aws_security_group" "migrate" {
+  # checkov:skip=CKV2_AWS_5: Attached to the change runner function in the server module, which receives this group's identifier; the check does not follow it across modules.
   name        = "${var.prefix}-migrate"
   description = "The change runner: no inbound; outbound only to the database and the secrets endpoint"
   vpc_id      = aws_vpc.this.id
@@ -169,6 +181,11 @@ output "vpc_id" {
 
 output "subnet_ids" {
   value = aws_subnet.private[*].id
+}
+
+output "subnet_availability_zones" {
+  description = "The Availability Zone of each private subnet, in order, for the test that they are the two named."
+  value       = aws_subnet.private[*].availability_zone
 }
 
 output "security_group_ids" {

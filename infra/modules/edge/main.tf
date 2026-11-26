@@ -285,6 +285,7 @@ resource "aws_cloudfront_origin_request_policy" "server" {
 }
 
 resource "aws_cloudfront_response_headers_policy" "pages" {
+  # checkov:skip=CKV_AWS_259: The header covers this site and every name beneath it for a year; only "preload" is off. Preload asks browsers to build the rule in for the whole registered domain, which holds other sites of the maintainer's and is not this project's to commit.
   name    = "${var.prefix}-pages"
   comment = "What the browser is told with the page (security design S5)"
 
@@ -295,7 +296,7 @@ resource "aws_cloudfront_response_headers_policy" "pages" {
     }
     strict_transport_security {
       access_control_max_age_sec = 31536000
-      include_subdomains         = false
+      include_subdomains         = true
       preload                    = false
       override                   = true
     }
@@ -314,13 +315,14 @@ resource "aws_cloudfront_response_headers_policy" "pages" {
 }
 
 resource "aws_cloudfront_response_headers_policy" "server" {
+  # checkov:skip=CKV_AWS_259: The header covers this site and every name beneath it for a year; only "preload" is off. Preload asks browsers to build the rule in for the whole registered domain, which holds other sites of the maintainer's and is not this project's to commit.
   name    = "${var.prefix}-server"
   comment = "Server answers: transport security added; the server sets no-store and nosniff itself"
 
   security_headers_config {
     strict_transport_security {
       access_control_max_age_sec = 31536000
-      include_subdomains         = false
+      include_subdomains         = true
       preload                    = false
       override                   = true
     }
