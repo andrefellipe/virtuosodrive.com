@@ -1,0 +1,7 @@
+{
+  "name": "@virtuoso-drive/edge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The access gate and the password page, compiled to the JavaScript the edge requires."
+}

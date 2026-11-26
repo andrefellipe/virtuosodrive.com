@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# GitHub's settings for the pipeline (infrastructure specification, "Account-wide
+# resources"). Run by the maintainer after setup.sh, signed in to GitHub with
+# the gh command line and to AWS:
+#
+#   infra/setup/github-settings.sh
+#
+# It applies: the pipeline identities and Region as repository variables;
+# "aws-migration" as the default branch (GitHub runs manually started and
+# scheduled workflows only from the default branch; "master" itself is not
+# changed); squash as the only way to merge; the "production" environment,
+# with the maintainer as required reviewer and restricted to that branch; and
+# protection of the branch. Run again, it applies the same settings.
+
+set -euo pipefail
+cd "$(dirname "$0")"
+
+REPOSITORY="andrefellipe/virtuosodrive.com"
+BRANCH="aws-migration"
+# The names of the jobs in .github/workflows/checks.yml that must pass.
+REQUIRED_CHECKS='["code","infrastructure","description"]'
+
+say() { printf '\n== %s\n' "$1"; }
+fail() {
+  printf '\nStopped: %s\n' "$1" >&2
+  exit 1
+}
+
+command -v gh >/dev/null || fail "The GitHub command line (gh) is not installed."
+command -v terraform >/dev/null || fail "Terraform is not installed."
+gh auth status >/dev/null 2>&1 || fail "You are not signed in to GitHub (gh auth login)."
+
+say "Repository variables"
+ROLE_TEST="$(terraform output -json deploy_role_arns | python3 -c 'import json,sys; print(json.load(sys.stdin)["test"])')"
+ROLE_PRODUCTION="$(terraform output -json deploy_role_arns | python3 -c 'import json,sys; print(json.load(sys.stdin)["production"])')"
+gh variable set AWS_ROLE_TEST --repo "${REPOSITORY}" --body "${ROLE_TEST}"
+gh variable set AWS_ROLE_PRODUCTION --repo "${REPOSITORY}" --body "${ROLE_PRODUCTION}"
+gh variable set AWS_REGION --repo "${REPOSITORY}" --body "$(terraform output -raw region)"
+gh variable set TF_STATE_BUCKET --repo "${REPOSITORY}" --body "$(terraform output -raw state_bucket)"
+gh variable set ALARM_TOPIC_ARN --repo "${REPOSITORY}" --body "$(terraform output -raw alarm_topic_arn)"
+
+say "Default branch and merging by squash only"
+gh api --method PATCH "repos/${REPOSITORY}" \
+  -f default_branch="${BRANCH}" \
+  -F allow_squash_merge=true \
+  -F allow_merge_commit=false \
+  -F allow_rebase_merge=false \
+  -F delete_branch_on_merge=true >/dev/null
+
+say "The production environment"
+REVIEWER_ID="$(gh api user --jq .id)"
+gh api --method PUT "repos/${REPOSITORY}/environments/production" --input - >/dev/null <<EOF ||
+{
+  "reviewers": [{ "type": "User", "id": ${REVIEWER_ID} }],
+  "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
+}
+EOF
+  fail "The production environment could not be given a required reviewer. GitHub's plan for this repository may not allow it; production approval then needs another mechanism."
+if ! gh api "repos/${REPOSITORY}/environments/production/deployment-branch-policies" --jq '.branch_policies[].name' | grep -qx "${BRANCH}"; then
+  gh api --method POST "repos/${REPOSITORY}/environments/production/deployment-branch-policies" \
+    -f name="${BRANCH}" -f type=branch >/dev/null
+fi
+
+say "Protection of ${BRANCH}"
+gh api --method PUT "repos/${REPOSITORY}/branches/${BRANCH}/protection" --input - >/dev/null <<EOF ||
+{
+  "required_status_checks": { "strict": true, "contexts": ${REQUIRED_CHECKS} },
+  "enforce_admins": true,
+  "required_pull_request_reviews": { "required_approving_review_count": 0 },
+  "restrictions": null,
+  "required_linear_history": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+EOF
+  fail "The branch could not be protected. GitHub's plan for this repository may not allow it; nothing else can enforce that changes arrive only through checked pull requests."
+
+say "Done"
+echo "Merging the first pull request into ${BRANCH} now builds both environments."

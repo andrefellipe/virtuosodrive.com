@@ -1,0 +1,3 @@
+A stand-in for the built access gate, read by "terraform test" only. It is
+never deployed: the pipeline passes the real build (dist/edge/access-gate.js).
+The two placeholders Terraform fills in: __VD_GATE_ENABLED__ __VD_ACCESS_HASH__

@@ -1,0 +1,26 @@
+# Checkov scans the Terraform files in every pull request. A finding fails the
+# pull request unless it has a recorded, reasoned exception.
+#
+# Exceptions are recorded where they apply: as a "checkov:skip=<check>: <reason>"
+# comment inside the resource concerned, in infra/. This file holds none, so
+# that no check is switched off for the whole repository without a place to
+# read why. The recurring reasons are:
+#
+#   - Keys managed by the maintainer are not used (security design S9): each
+#     has a fixed monthly cost under a ceiling of US$60, and the service's own
+#     encryption is on everywhere.
+#   - One Region and one Availability Zone, by decision (technology decisions
+#     T1, reliability design R7): no cross-Region copies, no standby.
+#   - Logs are kept 30 days, by requirement (FR12.5), not a year.
+#   - No web application firewall and no extra access logs: fixed or
+#     per-request costs the ceiling does not allow (scalability design C2).
+directory:
+  - infra
+framework:
+  - terraform
+quiet: true
+compact: true
+download-external-modules: false
+soft-fail: false
+skip-path:
+  - infra/environment/tests

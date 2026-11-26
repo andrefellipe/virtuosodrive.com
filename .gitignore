@@ -27,3 +27,21 @@ aidlc/diagnostics/
 .aidlc/base-source-listing.tsv
 .claude/settings.local.json
 # END AI-DLC:gitignore
+
+# Installed dependencies are never committed
+node_modules/
+
+# Build output, coverage and test reports
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Terraform's working folders, local state and saved plans
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+# Written by infra/setup/setup.sh once the state bucket exists
+infra/setup/backend.tf

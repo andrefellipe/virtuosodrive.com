@@ -1,0 +1,58 @@
+{
+  "name": "virtuoso-drive",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Virtuoso Drive on AWS: page, server, database changes, access gate, pipeline scripts and end-to-end tests.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "web",
+    "server",
+    "db-migrate",
+    "edge",
+    "e2e",
+    "scripts"
+  ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc -p server && tsc -p db-migrate && tsc -p web && tsc -p edge && tsc -p scripts && tsc -p e2e",
+    "test": "vitest run server db-migrate web edge scripts",
+    "test:unit": "vitest run server db-migrate web edge scripts --exclude '**/*.integration.test.ts'",
+    "test:coverage": "vitest run server db-migrate web edge scripts --coverage",
+    "build": "node scripts/src/build.ts",
+    "repo-checks": "node scripts/src/repository-checks.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run repo-checks",
+    "e2e": "playwright test --config e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.1",
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.65.1",
+    "@testcontainers/postgresql": "12.2.2",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/aws-lambda": "8.10.164",
+    "@types/node": "24.19.4",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.3",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "@vitest/coverage-v8": "5.1.2",
+    "esbuild": "0.28.2",
+    "eslint": "9.39.5",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "jsdom": "31.0.1",
+    "prettier": "3.10.1",
+    "testcontainers": "12.2.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.74.0",
+    "vite": "8.3.8",
+    "vitest": "5.1.2"
+  }
+}

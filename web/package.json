@@ -1,0 +1,12 @@
+{
+  "name": "@virtuoso-drive/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The page (React, Vite).",
+  "dependencies": {
+    "bootstrap": "5.3.9",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

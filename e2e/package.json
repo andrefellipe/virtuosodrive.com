@@ -1,0 +1,7 @@
+{
+  "name": "@virtuoso-drive/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests, run against a deployed environment."
+}

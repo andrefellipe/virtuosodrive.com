@@ -1,0 +1,7 @@
+{
+  "name": "@virtuoso-drive/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build, smoke check, the 100-call measurement and the repository checks."
+}
