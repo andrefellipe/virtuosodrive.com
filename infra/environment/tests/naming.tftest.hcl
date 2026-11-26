@@ -56,6 +56,16 @@ run "test_names_carry_the_test_prefix" {
     condition     = join(",", module.network.subnet_availability_zones) == "us-east-1a,us-east-1b"
     error_message = "The two private subnets must be in us-east-1a and us-east-1b, in that order, and nowhere else."
   }
+
+  assert {
+    condition     = module.database.parameters["log_connections"] == "all"
+    error_message = "The database's settings group must give log_connections the value all: PostgreSQL 18 takes a list of what to log, and AWS refuses 1."
+  }
+
+  assert {
+    condition     = module.database.parameter_group_name_prefix == "vd-test-postgres18-"
+    error_message = "The settings group's name must begin vd-test-postgres18- and end in a generated suffix, so that a replacement can be created before the old group is removed."
+  }
 }
 
 run "production_names_carry_the_production_prefix" {
@@ -84,6 +94,11 @@ run "production_names_carry_the_production_prefix" {
   assert {
     condition     = alltrue([for name in output.log_group_names : startswith(name, "/vd/prod/") || startswith(name, "/aws/cloudfront/function/vd-prod-")])
     error_message = "A log group of production is not named for it."
+  }
+
+  assert {
+    condition     = module.database.parameter_group_name_prefix == "vd-prod-postgres18-"
+    error_message = "The settings group's name in production must begin vd-prod-postgres18-."
   }
 }
 

@@ -136,6 +136,65 @@ Run on 2026-11-26, before commit:
 | `npm run check` | Ran through to its last step: format, lint, type check, tests with coverage (lines 91.64%, 757 of 826), build, repository checks (774 files) |
 | `npx vitest run server db-migrate web edge scripts` | 26 files, 189 tests passed, 0 failed |
 
+## Corrected after the pipeline's first run
+
+The first run of the `deliver` workflow, on 2026-11-26, created these in the
+test environment: the network, the edge, the certificate, the name records,
+the buckets, the secrets and the log groups. It then stopped at the database.
+
+**What AWS refused, and why.** The database's settings group gave
+`log_connections` the value `1`. PostgreSQL 18 changed that setting from on
+or off to a list of what to log about each new connection. For the
+`postgres18` family AWS allows `receipt`, `authentication`, `authorization`,
+`setup_durations` and `all`, so `1` is no longer a value it accepts. The
+database is created after its settings group, so it was not created either.
+
+**What was changed.**
+
+- `infra/modules/database/main.tf`: `log_connections` is now `all`, which logs every stage of every new connection, as `1` did before. The volume is small, because the server keeps one connection per running copy. A comment above the setting says why.
+- The database module has a new output, `parameters`, giving the settings group's settings as name to value, so that a test can read them. A test cannot read a resource inside a module directly.
+- `infra/environment/tests/naming.tftest.hcl` has one more assertion, in its first run: the settings group gives `log_connections` the value `all`. With the old value put back for a moment, that run failed on this assertion, so the assertion does check the setting. No existing assertion was changed, and the number of test runs is unchanged (5 in `infra/environment`, 3 in `infra/setup`).
+
+**Checked against AWS on 2026-11-26 and accepted as written:** the group's
+other two settings (`rds.force_ssl` and `log_min_duration_statement`), the
+database's size (`db.t4g.micro`) and the certificate authority's name
+(`rds-ca-rsa2048-g1`). That check also settles one point under "Not verified"
+below: AWS offers the settings family `postgres18`.
+
+**What the first run left behind, and the second change.** The first run did
+not fail cleanly. AWS created the settings group `vd-test-postgres18` and
+then refused the value, and Terraform's state records that group as tainted,
+which means it will be replaced (both checked on 2026-11-26, read-only). The
+group had a fixed name and is replaced by creating the new one before
+removing the old. A new group with the same name would have been refused as
+already existing, so the next run would have stopped at the same place for a
+different reason.
+
+- `infra/modules/database/main.tf`: the settings group now has a name that begins `<prefix>-postgres<major version>-` and ends in a generated suffix (`name_prefix`). A replacement gets a new name, is created first, and the old group is removed afterwards. The name still begins with the environment's prefix, which the pipeline identity's outer limit relies on. A comment above the group says why.
+- The half-made group is removed by the pipeline on its next run, as part of that replacement. Nothing is removed by hand.
+- The database module has a new output, `parameter_group_name_prefix`. Its output `names` no longer lists the settings group, because the end of the group's name is not known until the group exists, and a check on an unknown name fails the whole naming test. The other 31 names are checked exactly as before.
+- `infra/environment/tests/naming.tftest.hcl` has two more assertions: the group's name prefix is `vd-test-postgres18-` in the test environment's run and `vd-prod-postgres18-` in production's. The second is one more than the plan names; it keeps the group's name checked in production, where `names` used to cover it. With the ending hyphen taken away for a moment, both failed. No existing assertion was changed.
+- Nothing else in `infra/` refers to the group's name: the database takes it from the group itself, and the setup's identities match database resources by the environment's prefix only.
+
+The fix reaches AWS only through its own pull request to `aws-migration`.
+Merging it starts the pipeline again, which carries on from what the first
+run created. Nothing was planned or applied against AWS while making it.
+
+Run on 2026-11-26, before commit, and again with the same results after the
+second change:
+
+| Command | Result |
+|---------|--------|
+| `terraform fmt -check -recursive infra` | Clean |
+| `terraform -chdir=infra/environment validate` | Valid |
+| `terraform -chdir=infra/setup validate` | Valid |
+| `terraform -chdir=infra/environment test` | 5 runs passed, 0 failed |
+| `terraform -chdir=infra/setup test` | 3 runs passed, 0 failed |
+| `npm run check` | Exit 0: format, lint, type check, 189 tests passed in 26 files with coverage (lines 91.64%, 757 of 826), build, repository checks (776 files) |
+
+Not run for this fix: Checkov, which is not installed on this machine and
+runs on the pull request; and anything against AWS.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.
