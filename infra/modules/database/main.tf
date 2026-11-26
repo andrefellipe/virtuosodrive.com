@@ -39,8 +39,15 @@ resource "aws_db_subnet_group" "this" {
   subnet_ids  = var.subnet_ids
 }
 
+locals {
+  parameter_group_name_prefix = "${var.prefix}-postgres${var.engine_major_version}-"
+}
+
+# The name begins with fixed text and ends in a generated suffix. When the
+# group has to be replaced, the new one is created before the old one is
+# removed, so the two exist together for a moment and cannot share a name.
 resource "aws_db_parameter_group" "this" {
-  name        = "${var.prefix}-postgres${var.engine_major_version}"
+  name_prefix = local.parameter_group_name_prefix
   family      = "postgres${var.engine_major_version}"
   description = "Connections must use TLS; statements slower than one second and connections are logged"
 
@@ -54,9 +61,12 @@ resource "aws_db_parameter_group" "this" {
     value = "1000"
   }
 
+  # PostgreSQL 18 made this setting a list of what to log about each new
+  # connection, where it used to be on or off. "all" logs every stage, which
+  # is what "1" meant before.
   parameter {
     name  = "log_connections"
-    value = "1"
+    value = "all"
   }
 
   lifecycle {
@@ -180,11 +190,22 @@ output "master_secret_name" {
   value = aws_secretsmanager_secret.master.name
 }
 
+output "parameters" {
+  description = "The settings group's settings, as name to value, so that a test can read them."
+  value       = { for parameter in aws_db_parameter_group.this.parameter : parameter.name => parameter.value }
+}
+
+output "parameter_group_name_prefix" {
+  description = "The fixed beginning of the settings group's name. The rest is generated, so a test checks the name by this."
+  value       = aws_db_parameter_group.this.name_prefix
+}
+
+# The settings group is not listed: the end of its name is generated and not
+# known until it exists. Its name is checked by parameter_group_name_prefix.
 output "names" {
   value = [
     aws_db_instance.this.identifier,
     aws_db_subnet_group.this.name,
-    aws_db_parameter_group.this.name,
     aws_secretsmanager_secret.master.name,
   ]
 }

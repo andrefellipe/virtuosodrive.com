@@ -2,13 +2,15 @@
 
 ## Summary
 
-- Builds: this round, only Step 15: fixes for the six findings of the infrastructure scan on pull request 12. Steps 1 to 14 (the page, the server call, the database read, the pipeline, Terraform and the one-time setup) are already built, reviewed and committed
-- Touches: this round, `infra/modules/edge/main.tf`, `infra/modules/network/main.tf`, the two Terraform test files under `infra/environment/tests/`, and `code-summary.md`. Nothing deployed is touched; nothing is deployed
-- Tests: this round, one more Terraform test (the two zones are the ones named) and the existing 189 unit and integration tests and 8 Terraform tests run again; the infrastructure scan itself runs on the pull request
+- Builds: this round, only Step 16: one database setting that AWS refused in the pipeline's first run, and a generated ending on the settings group's name so that the half-made group the first run left behind can be replaced. Steps 1 to 15 are already built, reviewed and merged
+- Touches: this round, `infra/modules/database/main.tf`, one Terraform test file under `infra/environment/tests/`, and `code-summary.md`. The fix reaches AWS only through its own pull request and the pipeline
+- Tests: this round, two more Terraform assertions (the setting has the value AWS accepts; the group's name begins as expected); the existing 189 unit and integration tests and 8 Terraform tests run again
 
-**Reopened on 2026-11-26** at the maintainer's request, after the pull
-request's first run of the infrastructure scan failed 6 of 187 checks. The
-plan below is as approved on 2026-11-25, with Step 15 added.
+Reopened twice on 2026-11-26 at the maintainer's request: first for Step 15,
+after the pull request's first infrastructure scan; then for Step 16, after
+the pipeline's first run against AWS. The maintainer asked that it be
+reopened for each pipeline fix until U1 is deployed. Steps 1 to 14 are as
+approved on 2026-11-25.
 
 ## What this plan is built from
 
@@ -85,6 +87,11 @@ as the Testing Contract below requires.
   - *Availability Zones looked up, not named (1 finding, `CKV_AWS_394`, in `infra/modules/network/main.tf`).* Replace the lookup with a module variable naming two zones, default `us-east-1a` and `us-east-1b`, validated to be exactly two different ones. A looked-up list can change when AWS adds a zone, which would move a subnet and the database in it. Remove the lookup's stand-in from the two existing Terraform test files, and add one assertion that the two subnets are in the two zones named.
   - *Security groups reported as unattached (3 findings, `CKV2_AWS_5`, in `infra/modules/network/main.tf`).* A false alarm: each is attached in another module that receives its identifier. Record an exception with that reason on each of the three.
   - Then: `terraform fmt`, `terraform validate` and `terraform test` in both Terraform folders; `npm run check`; add a short section to `code-summary.md`; commit on the branch `u1-thin-slice` and push, so the scan runs again on the pull request. No test is weakened and no check is switched off for the whole project.
+- [x] **Step 16: The database setting AWS refused in the pipeline's first run.** (US9.2, US9.3) The first run of `deliver` (2026-11-26) created the network, the edge, the certificate, the name records, the buckets and the secrets in the test environment, then stopped: AWS refused the database's settings group because `log_connections` was given the value `1`. PostgreSQL 18 changed that setting from on or off to a list of what to log about each connection; AWS lists the allowed values for the `postgres18` family as `receipt`, `authentication`, `authorization`, `setup_durations` and `all` (checked on 2026-11-26, with the other two settings in the group, which are accepted as written).
+  - In `infra/modules/database/main.tf`, set `log_connections` to `all`, which is what the old `1` meant: every stage of every new connection is logged. The volume is small, because the server keeps one connection per running copy.
+  - In `infra/environment/tests/naming.tftest.hcl`, add one assertion that the settings group gives `log_connections` the value `all`; expose the value as an output of the database module if the test cannot otherwise read it.
+  - *Added on 2026-11-26 after the first part was built, and needing the maintainer's approval again.* The first run did not fail cleanly: AWS created the settings group `vd-test-postgres18` and then refused the value, and Terraform's state records the group as tainted (both checked on 2026-11-26, read-only). The group has a fixed name and is replaced by creating the new one before removing the old; a replacement would therefore be refused as already existing, and the next run would fail at the same place for a different reason. In `infra/modules/database/main.tf`, give the settings group a name that begins with the same text and ends in a generated suffix (`name_prefix`, as `<prefix>-postgres<major version>-`), so that a replacement gets a new name, is created first, and the old one is removed afterwards by the pipeline. The name still begins with the environment's prefix, which the pipeline identity's outer limit relies on. Change whatever else in `infra/` refers to the group's fixed name, if anything does. Add one assertion to the same test that the group's name prefix is `vd-test-postgres18-`.
+  - Then: `terraform fmt`, `terraform validate` and `terraform test` in both Terraform folders; `npm run check`; add a short section to `code-summary.md`; commit on the branch `u1-fix-database-settings` and push, and open a pull request to `aws-migration` that names U1. Merging it starts the pipeline again, which carries on from what the first run created.
 
 ## Story to step
 
