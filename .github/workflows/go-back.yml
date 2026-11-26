@@ -1,0 +1,139 @@
+# Puts the previous Release back in one environment (pipeline design,
+# "go-back"). Nothing is rebuilt; Terraform and the database are not touched.
+# For production, the same approval applies as for a deployment.
+name: go-back
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment to put the previous version back in
+        required: true
+        type: choice
+        options: [test, production]
+
+permissions:
+  contents: read
+
+jobs:
+  go-back:
+    name: Go back in ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Production needs the maintainer's approval; test has no GitHub environment.
+    environment: ${{ inputs.environment == 'production' && 'production' || '' }}
+    concurrency:
+      group: deliver-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      deployments: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      PREFIX: ${{ inputs.environment == 'production' && 'vd-prod' || 'vd-test' }}
+      SITE_URL: ${{ inputs.environment == 'production' && 'https://virtuoso.andrefellipelabs.com' || 'https://test.virtuoso.andrefellipelabs.com' }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Find the previous Release, from the record of Deployments
+        id: previous
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=releases-${ENVIRONMENT}&per_page=100" > deployments.json
+          read -r RELEASE SHA LAMBDA _ <<< "$(node scripts/src/deployment-record.ts previous < deployments.json) - - -"
+          read -r RUNNING _ <<< "$(node scripts/src/deployment-record.ts running < deployments.json) -"
+          if [ "${RELEASE}" = "-" ]; then
+            echo "There is no previous Release in ${ENVIRONMENT}: only one Release has ever been put in place there. Nothing was done." | tee -a "${GITHUB_STEP_SUMMARY}"
+            echo "found=no" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "Going back in ${ENVIRONMENT} from Release ${RUNNING} to Release ${RELEASE}." | tee -a "${GITHUB_STEP_SUMMARY}"
+          {
+            echo "found=yes"
+            echo "release=${RELEASE}"
+            echo "sha=${SHA}"
+            echo "lambda=${LAMBDA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Take the environment's identity (one hour, no stored keys)
+        if: steps.previous.outputs.found == 'yes'
+        id: identity
+        uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
+        with:
+          role-to-assume: ${{ inputs.environment == 'production' && vars.AWS_ROLE_PRODUCTION || vars.AWS_ROLE_TEST }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Move the server's name back and put that Release's entry document back
+        if: steps.previous.outputs.found == 'yes'
+        id: switch
+        env:
+          RELEASE: ${{ steps.previous.outputs.release }}
+          RECORDED_LAMBDA: ${{ steps.previous.outputs.lambda }}
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          PAGES_BUCKET="${PREFIX}-pages-${ACCOUNT_ID}"
+          # The numbered version that holds the Release: as recorded, checked against the function itself.
+          LAMBDA="$(aws lambda list-versions-by-function --function-name "${PREFIX}-server" \
+            --query "Versions[?Description=='release ${RELEASE}'].Version | [-1]" --output text)"
+          if [ "${LAMBDA}" = "None" ]; then
+            echo "::error::The server function no longer holds Release ${RELEASE} (recorded as version ${RECORDED_LAMBDA}). Nothing was changed."
+            exit 1
+          fi
+          aws s3api head-object --bucket "${PAGES_BUCKET}" --key "r/${RELEASE}/index.html" > /dev/null
+          aws lambda update-alias --function-name "${PREFIX}-server" --name live --function-version "${LAMBDA}" > /dev/null
+          aws s3 cp "s3://${PAGES_BUCKET}/r/${RELEASE}/index.html" "s3://${PAGES_BUCKET}/index.html" \
+            --cache-control "no-store" --content-type "text/html; charset=utf-8" --only-show-errors
+          echo "lambda=${LAMBDA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke check, expecting the previous Release's version
+        if: steps.previous.outputs.found == 'yes'
+        id: smoke
+        env:
+          VD_ENVIRONMENT: ${{ inputs.environment }}
+          VD_EXPECTED_VERSION: ${{ steps.previous.outputs.release }}
+        run: |
+          ACCESS_PASSWORD="$(aws ssm get-parameter --name "${PREFIX}-access-password" --with-decryption --query Parameter.Value --output text)"
+          echo "::add-mask::${ACCESS_PASSWORD}"
+          VD_BASE_URL="${SITE_URL}" VD_ACCESS_PASSWORD="${ACCESS_PASSWORD}" node scripts/src/cli.ts smoke
+
+      - name: Record the Deployment, direction back, and its outcome
+        if: always() && steps.previous.outputs.found == 'yes' && steps.identity.outcome == 'success'
+        env:
+          RELEASE: ${{ steps.previous.outputs.release }}
+          RELEASE_SHA: ${{ steps.previous.outputs.sha }}
+          LAMBDA: ${{ steps.switch.outputs.lambda }}
+          SWITCHED: ${{ steps.switch.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+        run: |
+          if [ "${SWITCHED}" = "success" ] && [ "${SMOKE}" = "success" ]; then
+            OUTCOME="succeeded"
+          elif [ "${SWITCHED}" = "success" ]; then
+            OUTCOME="inPlaceButFailing"
+          else
+            OUTCOME="notPutInPlace"
+          fi
+          echo "Going back to Release ${RELEASE} in ${ENVIRONMENT}: ${OUTCOME}." | tee -a "${GITHUB_STEP_SUMMARY}"
+          jq -n --arg ref "${RELEASE_SHA}" --arg environment "releases-${ENVIRONMENT}" \
+            --arg release "${RELEASE}" --arg lambda "${LAMBDA}" --arg outcome "${OUTCOME}" \
+            '{ref: $ref, environment: $environment, auto_merge: false, required_contexts: [],
+              description: ("Back to release " + $release + ": " + $outcome),
+              payload: {release: $release, lambdaVersion: $lambda, direction: "back", outcome: $outcome}}' |
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - > /dev/null
+
+      - name: Tell the maintainer that going back failed
+        if: failure() && steps.identity.outcome == 'success'
+        env:
+          ALARM_TOPIC_ARN: ${{ vars.ALARM_TOPIC_ARN }}
+        run: |
+          aws sns publish --topic-arn "${ALARM_TOPIC_ARN}" \
+            --subject "Virtuoso Drive, ${ENVIRONMENT}: going back failed" \
+            --message "Going back to the previous version in ${ENVIRONMENT} failed; the environment was left as the run's summary says. Open the run first: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} ."

@@ -1,0 +1,135 @@
+# Everything that must pass before a pull request can be merged (pipeline
+# design, "checks"). These jobs need no AWS access and are given no permission
+# to ask for an AWS token.
+name: checks
+
+on:
+  pull_request:
+    branches: [aws-migration]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install, exactly from the lockfile
+        run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit and integration tests, with the 80% coverage floor
+        run: npm run test:coverage
+
+      - name: Build the Release, with the page's size limit
+        run: npm run build
+
+      - name: Repository checks
+        run: npm run repo-checks
+
+      - name: Dependencies
+        run: npm audit --audit-level=high
+
+      - name: Secrets
+        run: >
+          docker run --rm -v "${PWD}:/repository" -w /repository
+          ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git --redact --no-banner --log-opts="origin/${GITHUB_BASE_REF}..HEAD"
+
+      - name: Compatibility with every version in reach
+        # The tests of each Release that is running in production, or that
+        # going back would restore, are run against this pull request's
+        # database changes (reliability design R5).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=releases-production&per_page=100" > deployments.json
+          node scripts/src/deployment-record.ts in-reach < deployments.json > in-reach.txt
+          if [ ! -s in-reach.txt ]; then
+            echo "No Release is in reach yet (nothing has been deployed to production), so there is nothing to check compatibility with."
+            exit 0
+          fi
+          while read -r RELEASE SHA _; do
+            echo "::group::Release ${RELEASE}: its tests against this pull request's database changes"
+            git worktree add --detach "../reach-${RELEASE}" "${SHA}"
+            rm -rf "../reach-${RELEASE}/db-migrate/migrations"
+            cp -R db-migrate/migrations "../reach-${RELEASE}/db-migrate/migrations"
+            (cd "../reach-${RELEASE}" && npm ci && npx vitest run server db-migrate)
+            echo "::endgroup::"
+          done < in-reach.txt
+          echo "NOTE: the page's end-to-end tests of each version in reach are not yet run against this pull request's server; that half of the check needs a way to start the server locally, which does not exist yet."
+
+  infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra
+
+      - name: Terraform validation, with no backend and no identity
+        run: |
+          for configuration in infra/setup infra/environment; do
+            terraform -chdir="${configuration}" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="${configuration}" validate
+          done
+
+      - name: Terraform's own tests (no AWS account is touched)
+        run: |
+          terraform -chdir=infra/setup test
+          terraform -chdir=infra/environment test
+
+      - name: Infrastructure scan
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check checkov==3.4.11
+          checkov --config-file .checkov.yaml
+
+  description:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The pull request names its Unit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s\n%s\n' "${TITLE}" "${BODY}" | grep -Eq '(^|[^A-Za-z0-9])[Uu][0-9]+([^A-Za-z0-9]|$)'; then
+            echo "The pull request names its Unit."
+          else
+            echo "::error::The pull request's title or description must name the Unit it belongs to (for example: U1)."
+            exit 1
+          fi

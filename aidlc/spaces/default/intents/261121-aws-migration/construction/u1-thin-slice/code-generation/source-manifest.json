@@ -1,0 +1,460 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-thin-slice",
+  "version": 1,
+  "writes": [
+    {
+      "path": ".checkov.yaml"
+    },
+    {
+      "path": ".github/actions/deploy/action.yml"
+    },
+    {
+      "path": ".github/workflows/checks.yml"
+    },
+    {
+      "path": ".github/workflows/compare.yml"
+    },
+    {
+      "path": ".github/workflows/deliver.yml"
+    },
+    {
+      "path": ".github/workflows/go-back.yml"
+    },
+    {
+      "path": ".gitignore"
+    },
+    {
+      "path": ".gitleaks.toml"
+    },
+    {
+      "path": ".npmrc"
+    },
+    {
+      "path": ".nvmrc"
+    },
+    {
+      "path": ".prettierignore"
+    },
+    {
+      "path": "app/package-lock.json"
+    },
+    {
+      "path": "app/package.json"
+    },
+    {
+      "path": "db-migrate/migrations/0001_site-information.sql"
+    },
+    {
+      "path": "db-migrate/migrations/users/create-users.sql"
+    },
+    {
+      "path": "db-migrate/package.json"
+    },
+    {
+      "path": "db-migrate/src/apply-migrations.ts"
+    },
+    {
+      "path": "db-migrate/src/config.ts"
+    },
+    {
+      "path": "db-migrate/src/decide.test.ts"
+    },
+    {
+      "path": "db-migrate/src/decide.ts"
+    },
+    {
+      "path": "db-migrate/src/index.ts"
+    },
+    {
+      "path": "db-migrate/src/migrations.integration.test.ts"
+    },
+    {
+      "path": "db-migrate/src/paths.ts"
+    },
+    {
+      "path": "db-migrate/src/runner.integration.test.ts"
+    },
+    {
+      "path": "db-migrate/src/runner.ts"
+    },
+    {
+      "path": "db-migrate/src/testing/postgres.ts"
+    },
+    {
+      "path": "db-migrate/tsconfig.json"
+    },
+    {
+      "path": "docs/examples.md"
+    },
+    {
+      "path": "docs/operations.md"
+    },
+    {
+      "path": "docs/records/alarm-proofs.md"
+    },
+    {
+      "path": "docs/records/failing-deployment.md"
+    },
+    {
+      "path": "docs/records/going-back.md"
+    },
+    {
+      "path": "docs/records/measured-speeds.md"
+    },
+    {
+      "path": "docs/records/restore.md"
+    },
+    {
+      "path": "e2e/package.json"
+    },
+    {
+      "path": "e2e/playwright.config.ts"
+    },
+    {
+      "path": "e2e/tests/environment.ts"
+    },
+    {
+      "path": "e2e/tests/thin-slice.spec.ts"
+    },
+    {
+      "path": "e2e/tsconfig.json"
+    },
+    {
+      "path": "edge/package.json"
+    },
+    {
+      "path": "edge/src/entry.ts"
+    },
+    {
+      "path": "edge/src/gate.test.ts"
+    },
+    {
+      "path": "edge/src/gate.ts"
+    },
+    {
+      "path": "edge/src/handler.ts"
+    },
+    {
+      "path": "edge/src/password-page.ts"
+    },
+    {
+      "path": "edge/tsconfig.json"
+    },
+    {
+      "path": "eslint.config.js"
+    },
+    {
+      "path": "infra/environment/.terraform.lock.hcl"
+    },
+    {
+      "path": "infra/environment/main.tf"
+    },
+    {
+      "path": "infra/environment/outputs.tf"
+    },
+    {
+      "path": "infra/environment/production.tfvars"
+    },
+    {
+      "path": "infra/environment/test.tfvars"
+    },
+    {
+      "path": "infra/environment/tests/alarms.tftest.hcl"
+    },
+    {
+      "path": "infra/environment/tests/fixtures/access-gate.txt"
+    },
+    {
+      "path": "infra/environment/tests/naming.tftest.hcl"
+    },
+    {
+      "path": "infra/environment/variables.tf"
+    },
+    {
+      "path": "infra/environment/versions.tf"
+    },
+    {
+      "path": "infra/modules/database/main.tf"
+    },
+    {
+      "path": "infra/modules/edge/main.tf"
+    },
+    {
+      "path": "infra/modules/monitoring/main.tf"
+    },
+    {
+      "path": "infra/modules/network/main.tf"
+    },
+    {
+      "path": "infra/modules/server/main.tf"
+    },
+    {
+      "path": "infra/setup/.terraform.lock.hcl"
+    },
+    {
+      "path": "infra/setup/budget.tf"
+    },
+    {
+      "path": "infra/setup/github-settings.sh"
+    },
+    {
+      "path": "infra/setup/identities.tf"
+    },
+    {
+      "path": "infra/setup/outputs.tf"
+    },
+    {
+      "path": "infra/setup/setup.sh"
+    },
+    {
+      "path": "infra/setup/state.tf"
+    },
+    {
+      "path": "infra/setup/tests/setup.tftest.hcl"
+    },
+    {
+      "path": "infra/setup/variables.tf"
+    },
+    {
+      "path": "infra/setup/versions.tf"
+    },
+    {
+      "path": "package-lock.json"
+    },
+    {
+      "path": "package.json"
+    },
+    {
+      "path": "scripts/package.json"
+    },
+    {
+      "path": "scripts/src/build.ts"
+    },
+    {
+      "path": "scripts/src/cli.ts"
+    },
+    {
+      "path": "scripts/src/commands.test.ts"
+    },
+    {
+      "path": "scripts/src/deployed-checks.test.ts"
+    },
+    {
+      "path": "scripts/src/deployment-record.test.ts"
+    },
+    {
+      "path": "scripts/src/deployment-record.ts"
+    },
+    {
+      "path": "scripts/src/files.ts"
+    },
+    {
+      "path": "scripts/src/measure.ts"
+    },
+    {
+      "path": "scripts/src/page-size.ts"
+    },
+    {
+      "path": "scripts/src/percentile.test.ts"
+    },
+    {
+      "path": "scripts/src/percentile.ts"
+    },
+    {
+      "path": "scripts/src/prune-releases.ts"
+    },
+    {
+      "path": "scripts/src/releases.ts"
+    },
+    {
+      "path": "scripts/src/repository-checks.ts"
+    },
+    {
+      "path": "scripts/src/repository-rules.test.ts"
+    },
+    {
+      "path": "scripts/src/repository-rules.ts"
+    },
+    {
+      "path": "scripts/src/smoke-check.ts"
+    },
+    {
+      "path": "scripts/tsconfig.json"
+    },
+    {
+      "path": "server/certs/rds-us-east-1-bundle.pem"
+    },
+    {
+      "path": "server/openapi.yaml"
+    },
+    {
+      "path": "server/package.json"
+    },
+    {
+      "path": "server/src/app.integration.test.ts"
+    },
+    {
+      "path": "server/src/app.ts"
+    },
+    {
+      "path": "server/src/aws/secrets.ts"
+    },
+    {
+      "path": "server/src/config.test.ts"
+    },
+    {
+      "path": "server/src/config.ts"
+    },
+    {
+      "path": "server/src/db/database.integration.test.ts"
+    },
+    {
+      "path": "server/src/db/database.ts"
+    },
+    {
+      "path": "server/src/db/deadline.test.ts"
+    },
+    {
+      "path": "server/src/db/deadline.ts"
+    },
+    {
+      "path": "server/src/db/rds-token.test.ts"
+    },
+    {
+      "path": "server/src/db/rds-token.ts"
+    },
+    {
+      "path": "server/src/db/site-information.ts"
+    },
+    {
+      "path": "server/src/http/operation.ts"
+    },
+    {
+      "path": "server/src/http/origin-secret.test.ts"
+    },
+    {
+      "path": "server/src/http/origin-secret.ts"
+    },
+    {
+      "path": "server/src/http/problem.test.ts"
+    },
+    {
+      "path": "server/src/http/problem.ts"
+    },
+    {
+      "path": "server/src/http/request-id.test.ts"
+    },
+    {
+      "path": "server/src/http/request-id.ts"
+    },
+    {
+      "path": "server/src/http/request-steps.test.ts"
+    },
+    {
+      "path": "server/src/http/request-steps.ts"
+    },
+    {
+      "path": "server/src/http/testing/events.ts"
+    },
+    {
+      "path": "server/src/index.test.ts"
+    },
+    {
+      "path": "server/src/index.ts"
+    },
+    {
+      "path": "server/src/log/entry.test.ts"
+    },
+    {
+      "path": "server/src/log/entry.ts"
+    },
+    {
+      "path": "server/src/log/measurements.ts"
+    },
+    {
+      "path": "server/src/log/output.test.ts"
+    },
+    {
+      "path": "server/src/log/request-log.ts"
+    },
+    {
+      "path": "server/src/log/scrub.test.ts"
+    },
+    {
+      "path": "server/src/log/scrub.ts"
+    },
+    {
+      "path": "server/src/openapi.test.ts"
+    },
+    {
+      "path": "server/src/operations/forced-failure.ts"
+    },
+    {
+      "path": "server/src/operations/health.ts"
+    },
+    {
+      "path": "server/src/operations/index.test.ts"
+    },
+    {
+      "path": "server/src/operations/index.ts"
+    },
+    {
+      "path": "server/src/operations/site-information.ts"
+    },
+    {
+      "path": "server/src/placeholder.ts"
+    },
+    {
+      "path": "server/tsconfig.json"
+    },
+    {
+      "path": "tsconfig.base.json"
+    },
+    {
+      "path": "vitest.config.ts"
+    },
+    {
+      "path": "web/index.html"
+    },
+    {
+      "path": "web/package.json"
+    },
+    {
+      "path": "web/src/App.tsx"
+    },
+    {
+      "path": "web/src/api/call-server.test.ts"
+    },
+    {
+      "path": "web/src/api/call-server.ts"
+    },
+    {
+      "path": "web/src/api/site-information.ts"
+    },
+    {
+      "path": "web/src/assets/af.png"
+    },
+    {
+      "path": "web/src/assets/favicon.ico"
+    },
+    {
+      "path": "web/src/main.tsx"
+    },
+    {
+      "path": "web/src/status/SiteStatus.test.tsx"
+    },
+    {
+      "path": "web/src/status/SiteStatus.tsx"
+    },
+    {
+      "path": "web/src/styles.css"
+    },
+    {
+      "path": "web/tsconfig.json"
+    },
+    {
+      "path": "web/vite.config.ts"
+    }
+  ]
+}

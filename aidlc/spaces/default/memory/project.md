@@ -58,11 +58,53 @@
 <!-- Format: - NEVER [behavior] (affirmed [date]) -->
 <!-- Example: - NEVER throw exceptions across service layer boundaries (affirmed 2026-05-17) -->
 
+- NEVER add new plain JavaScript source files; tool configuration files are the exception. (affirmed 2026-11-25)
+
+- NEVER depend on any Google Cloud or Firebase service at runtime in the AWS version. (affirmed 2026-11-25)
+
+- NEVER write to Firebase from the new system, or change the live Firebase site while the AWS version is being built and tested. (affirmed 2026-11-25)
+
+- NEVER use the AWS SDK for JavaScript v2. (affirmed 2026-11-25)
+
+- NEVER build SQL by string concatenation. (affirmed 2026-11-25)
+
+- NEVER assign user-supplied text to `innerHTML`. (affirmed 2026-11-25)
+
+- NEVER commit `node_modules/`. (affirmed 2026-11-25)
+
+- NEVER load scripts from public CDNs at runtime. (affirmed 2026-11-25)
+
+- NEVER put cloud credentials or long-lived keys in the browser. (affirmed 2026-11-25)
+
+- NEVER let the browser talk to the database directly. (affirmed 2026-11-25)
+
+- NEVER put secrets in source code, in config files, or in the frontend bundle. (affirmed 2026-11-25)
+
+- NEVER use long-lived access keys in the pipeline. (affirmed 2026-11-25)
+
+- NEVER create AWS resources by hand in the console. (affirmed 2026-11-25)
+
+- NEVER mock the database in integration tests. (affirmed 2026-11-25)
+
+- NEVER use AWS App Runner. (affirmed 2026-11-25)
+
+- NEVER use Amazon EC2 instances managed by hand. (affirmed 2026-11-25)
+
 ## Mandated
 
 <!-- Populated by practices-discovery affirmation gate. -->
 <!-- Format: - ALWAYS [behavior] (affirmed [date]) -->
 <!-- Example: - ALWAYS use Result<T,E> for fallible operations in service layer (affirmed 2026-05-17) -->
+
+- ALWAYS use PostgreSQL as the system of record for folders and file metadata. (affirmed 2026-11-25)
+
+- ALWAYS validate every API input before it is used. (affirmed 2026-11-25)
+
+- ALWAYS have the budget alarm in place before any other AWS resource is created. (affirmed 2026-11-25)
+
+- ALWAYS get the maintainer's approval at a gate before adding a library that is not already listed, stating what it is for, its licence, and whether something already listed could do the job. (affirmed 2026-11-25)
+
+- ALWAYS keep encryption at rest on for S3 and the database, and use TLS 1.2 or later in transit. (affirmed 2026-11-25)
 
 ## Corrections
 

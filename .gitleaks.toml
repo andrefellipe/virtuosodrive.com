@@ -1,0 +1,29 @@
+# Gitleaks scans every pull request for secrets. Anything found fails it.
+# The scanner's own rules are used; this file only names what is not a secret.
+title = "Virtuoso Drive"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The old site's Firebase web configuration predates this work and is public by design of that product; it leaves with the Firebase SDK at the switch. AI-DLC's own records are not this work's source."
+paths = [
+  '''^app/''',
+  '''^aidlc/''',
+  '''^\.claude/''',
+]
+
+[[allowlists]]
+description = "Published certificate authorities of Amazon RDS: public certificates, not keys."
+paths = [
+  '''^server/certs/rds-us-east-1-bundle\.pem$''',
+]
+
+[[allowlists]]
+description = "Stand-in values in tests: AWS's documented example credentials and passwords made up for the tests."
+regexTarget = "match"
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+  '''Example0Password0For0Tests0Only0''',
+]

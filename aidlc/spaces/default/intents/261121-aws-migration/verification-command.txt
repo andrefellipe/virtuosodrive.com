@@ -1,0 +1,1 @@
+npm run check && terraform -chdir=infra/setup test && terraform -chdir=infra/environment test

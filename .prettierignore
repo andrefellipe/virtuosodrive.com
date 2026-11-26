@@ -1,0 +1,20 @@
+# The old site and the files that were here before this work are left as they are
+app/
+README.md
+vision.md
+.mcp.json
+aidlc.settings.json
+aidlc.settings.local.json
+
+# AI-DLC's own workspace and tooling
+aidlc/
+.claude/
+
+# Generated
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+package-lock.json
+.terraform/

@@ -1,0 +1,668 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-thin-slice",
+  "upstream_ids": [
+    "AC9.1.1",
+    "AC9.1.2",
+    "AC9.1.3",
+    "AC9.1.4",
+    "AC9.1.5",
+    "AC9.2.1",
+    "AC9.2.2",
+    "AC9.2.3",
+    "AC9.2.4",
+    "AC9.3.1",
+    "AC9.3.2",
+    "AC9.3.3",
+    "AC9.3.4",
+    "AC9.4.1",
+    "AC9.4.2",
+    "AC9.4.3",
+    "NFR9.1",
+    "NFR9.2",
+    "NFR9.3",
+    "NFR9.4",
+    "NFR9.5",
+    "NFR9.6",
+    "NFR9.7",
+    "NFR6.1",
+    "NFR6.2",
+    "NFR7.1",
+    "NFR8.1",
+    "NFR4.2",
+    "NFR1.1",
+    "NFR1.2",
+    "NFR1.3",
+    "NFR2.1",
+    "NFR2.2",
+    "NFR2.3",
+    "NFR2.4",
+    "NFR11.3",
+    "NFR2.5",
+    "NFR3.1",
+    "NFR3.2",
+    "NFR3.3",
+    "NFR3.4",
+    "NFR3.5",
+    "NFR4.1",
+    "NFR4.3",
+    "NFR5.1",
+    "NFR5.2",
+    "NFR5.3",
+    "NFR13.1",
+    "NFR15.1",
+    "NFR15.2",
+    "NFR15.13",
+    "NFR15.3",
+    "NFR15.4",
+    "NFR15.5",
+    "NFR15.6",
+    "NFR15.7",
+    "NFR11.1",
+    "NFR11.10",
+    "NFR11.2",
+    "NFR11.4",
+    "NFR11.5",
+    "NFR11.6",
+    "NFR11.7",
+    "NFR10.1",
+    "NFR10.2",
+    "NFR10.3",
+    "NFR10.4",
+    "NFR10.5",
+    "NFR10.6",
+    "NFR10.7",
+    "NFR15.8",
+    "NFR15.9",
+    "NFR15.10",
+    "NFR14.1",
+    "NFR14.2",
+    "NFR14.3",
+    "NFR14.4",
+    "NFR14.5",
+    "NFR15.11",
+    "NFR15.12",
+    "BR1.1",
+    "BR1.2",
+    "BR1.3",
+    "BR1.4",
+    "BR1.5",
+    "BR2.1",
+    "BR2.4",
+    "BR5.1",
+    "BR2.2",
+    "BR2.3",
+    "BR2.5",
+    "BR3.1",
+    "BR3.2",
+    "BR3.3",
+    "BR3.4",
+    "BR3.5",
+    "BR3.6",
+    "BR3.7",
+    "BR6.1",
+    "BR4.1",
+    "BR4.2",
+    "BR4.3",
+    "BR4.4",
+    "BR5.2",
+    "BR5.3",
+    "BR5.4",
+    "BR6.2",
+    "BR6.3",
+    "BR7.1",
+    "BR7.2"
+  ],
+  "coverage": [
+    {
+      "id": "AC9.1.1",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "AC9.1.2",
+      "status": "OK",
+      "target": "vitest.config.ts"
+    },
+    {
+      "id": "AC9.1.3",
+      "status": "OK",
+      "target": ".github/workflows/deliver.yml"
+    },
+    {
+      "id": "AC9.1.4",
+      "status": "OK",
+      "target": ".github/workflows/deliver.yml"
+    },
+    {
+      "id": "AC9.1.5",
+      "status": "OK",
+      "target": ".github/workflows/deliver.yml"
+    },
+    {
+      "id": "AC9.2.1",
+      "status": "OK",
+      "target": "infra/setup/setup.sh"
+    },
+    {
+      "id": "AC9.2.2",
+      "status": "OK",
+      "target": ".github/actions/deploy/action.yml"
+    },
+    {
+      "id": "AC9.2.3",
+      "status": "OK",
+      "target": "infra/setup/budget.tf"
+    },
+    {
+      "id": "AC9.2.4",
+      "status": "OK",
+      "target": ".github/workflows/compare.yml"
+    },
+    {
+      "id": "AC9.3.1",
+      "status": "OK",
+      "target": "server/src/log/request-log.ts"
+    },
+    {
+      "id": "AC9.3.2",
+      "status": "OK",
+      "target": "infra/modules/monitoring/main.tf"
+    },
+    {
+      "id": "AC9.3.3",
+      "status": "OK",
+      "target": "infra/modules/monitoring/main.tf"
+    },
+    {
+      "id": "AC9.3.4",
+      "status": "OK",
+      "target": "server/src/log/scrub.ts"
+    },
+    {
+      "id": "AC9.4.1",
+      "status": "OK",
+      "target": ".github/workflows/go-back.yml"
+    },
+    {
+      "id": "AC9.4.2",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "AC9.4.3",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "NFR9.1",
+      "status": "OK",
+      "target": "scripts/src/measure.ts"
+    },
+    {
+      "id": "NFR9.2",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "NFR9.3",
+      "status": "OK",
+      "target": "scripts/src/page-size.ts"
+    },
+    {
+      "id": "NFR9.4",
+      "status": "OK",
+      "target": "server/src/db/deadline.ts"
+    },
+    {
+      "id": "NFR9.5",
+      "status": "OK",
+      "target": "scripts/src/page-size.ts"
+    },
+    {
+      "id": "NFR9.6",
+      "status": "OK",
+      "target": "infra/modules/edge/main.tf"
+    },
+    {
+      "id": "NFR9.7",
+      "status": "OK",
+      "target": "web/src/api/call-server.ts"
+    },
+    {
+      "id": "NFR6.1",
+      "status": "OK",
+      "target": "e2e/tests/thin-slice.spec.ts"
+    },
+    {
+      "id": "NFR6.2",
+      "status": "OK",
+      "target": "web/src/status/SiteStatus.tsx"
+    },
+    {
+      "id": "NFR7.1",
+      "status": "OK",
+      "target": "e2e/playwright.config.ts"
+    },
+    {
+      "id": "NFR8.1",
+      "status": "OK",
+      "target": "web/src/App.tsx"
+    },
+    {
+      "id": "NFR4.2",
+      "status": "OK",
+      "target": "infra/modules/edge/main.tf"
+    },
+    {
+      "id": "NFR1.1",
+      "status": "OK",
+      "target": "scripts/src/repository-rules.ts"
+    },
+    {
+      "id": "NFR1.2",
+      "status": "OK",
+      "target": "e2e/tests/thin-slice.spec.ts"
+    },
+    {
+      "id": "NFR1.3",
+      "status": "OK",
+      "target": "infra/modules/edge/main.tf"
+    },
+    {
+      "id": "NFR2.1",
+      "status": "OK",
+      "target": "server/src/operations/index.test.ts"
+    },
+    {
+      "id": "NFR2.2",
+      "status": "OK",
+      "target": "edge/src/gate.ts"
+    },
+    {
+      "id": "NFR2.3",
+      "status": "N/A",
+      "target": "met by the password's length and the request limit (NFR2.4, NFR11.3); no code of its own"
+    },
+    {
+      "id": "NFR2.4",
+      "status": "OK",
+      "target": "infra/environment/main.tf"
+    },
+    {
+      "id": "NFR11.3",
+      "status": "OK",
+      "target": "infra/modules/server/main.tf"
+    },
+    {
+      "id": "NFR2.5",
+      "status": "OK",
+      "target": "edge/src/gate.ts"
+    },
+    {
+      "id": "NFR3.1",
+      "status": "OK",
+      "target": "server/src/http/request-steps.ts"
+    },
+    {
+      "id": "NFR3.2",
+      "status": "OK",
+      "target": "server/src/http/request-id.ts"
+    },
+    {
+      "id": "NFR3.3",
+      "status": "OK",
+      "target": "eslint.config.js"
+    },
+    {
+      "id": "NFR3.4",
+      "status": "OK",
+      "target": "eslint.config.js"
+    },
+    {
+      "id": "NFR3.5",
+      "status": "OK",
+      "target": "server/src/http/problem.ts"
+    },
+    {
+      "id": "NFR4.1",
+      "status": "OK",
+      "target": "infra/modules/database/main.tf"
+    },
+    {
+      "id": "NFR4.3",
+      "status": "OK",
+      "target": "server/src/db/database.integration.test.ts"
+    },
+    {
+      "id": "NFR5.1",
+      "status": "OK",
+      "target": "infra/setup/setup.sh"
+    },
+    {
+      "id": "NFR5.2",
+      "status": "OK",
+      "target": "server/src/log/scrub.ts"
+    },
+    {
+      "id": "NFR5.3",
+      "status": "OK",
+      "target": "infra/setup/identities.tf"
+    },
+    {
+      "id": "NFR13.1",
+      "status": "OK",
+      "target": "infra/setup/github-settings.sh"
+    },
+    {
+      "id": "NFR15.1",
+      "status": "OK",
+      "target": "infra/setup/identities.tf"
+    },
+    {
+      "id": "NFR15.2",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "NFR15.13",
+      "status": "OK",
+      "target": "infra/setup/identities.tf"
+    },
+    {
+      "id": "NFR15.3",
+      "status": "OK",
+      "target": "infra/modules/server/main.tf"
+    },
+    {
+      "id": "NFR15.4",
+      "status": "OK",
+      "target": "server/src/aws/secrets.ts"
+    },
+    {
+      "id": "NFR15.5",
+      "status": "OK",
+      "target": "infra/setup/state.tf"
+    },
+    {
+      "id": "NFR15.6",
+      "status": "OK",
+      "target": "scripts/src/repository-rules.ts"
+    },
+    {
+      "id": "NFR15.7",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "NFR11.1",
+      "status": "N/A",
+      "target": "the cost estimate is a design document (infrastructure-specification.md); no code"
+    },
+    {
+      "id": "NFR11.10",
+      "status": "N/A",
+      "target": "the cost estimate is a design document (infrastructure-specification.md); no code"
+    },
+    {
+      "id": "NFR11.2",
+      "status": "N/A",
+      "target": "the cost estimate is a design document (infrastructure-specification.md); no code"
+    },
+    {
+      "id": "NFR11.4",
+      "status": "OK",
+      "target": "infra/modules/server/main.tf"
+    },
+    {
+      "id": "NFR11.5",
+      "status": "OK",
+      "target": "server/src/db/database.ts"
+    },
+    {
+      "id": "NFR11.6",
+      "status": "OK",
+      "target": "infra/environment/test.tfvars"
+    },
+    {
+      "id": "NFR11.7",
+      "status": "Deferred",
+      "target": "feedback-optimization"
+    },
+    {
+      "id": "NFR10.1",
+      "status": "Deferred",
+      "target": "observability-setup"
+    },
+    {
+      "id": "NFR10.2",
+      "status": "Deferred",
+      "target": "observability-setup"
+    },
+    {
+      "id": "NFR10.3",
+      "status": "OK",
+      "target": "infra/environment/test.tfvars"
+    },
+    {
+      "id": "NFR10.4",
+      "status": "OK",
+      "target": "server/src/db/database.integration.test.ts"
+    },
+    {
+      "id": "NFR10.5",
+      "status": "OK",
+      "target": "web/src/api/call-server.ts"
+    },
+    {
+      "id": "NFR10.6",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "NFR10.7",
+      "status": "Deferred",
+      "target": "code-generation"
+    },
+    {
+      "id": "NFR15.8",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "NFR15.9",
+      "status": "OK",
+      "target": "db-migrate/src/runner.ts"
+    },
+    {
+      "id": "NFR15.10",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "NFR14.1",
+      "status": "OK",
+      "target": "infra/modules/database/main.tf"
+    },
+    {
+      "id": "NFR14.2",
+      "status": "OK",
+      "target": "infra/modules/database/main.tf"
+    },
+    {
+      "id": "NFR14.3",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "NFR14.4",
+      "status": "OK",
+      "target": "infra/modules/database/main.tf"
+    },
+    {
+      "id": "NFR14.5",
+      "status": "OK",
+      "target": "infra/setup/state.tf"
+    },
+    {
+      "id": "NFR15.11",
+      "status": "OK",
+      "target": "infra/modules/database/main.tf"
+    },
+    {
+      "id": "NFR15.12",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "BR1.1",
+      "status": "OK",
+      "target": "server/src/operations/site-information.ts"
+    },
+    {
+      "id": "BR1.2",
+      "status": "OK",
+      "target": "web/src/status/SiteStatus.tsx"
+    },
+    {
+      "id": "BR1.3",
+      "status": "OK",
+      "target": "server/src/operations/health.ts"
+    },
+    {
+      "id": "BR1.4",
+      "status": "OK",
+      "target": "server/src/http/request-id.ts"
+    },
+    {
+      "id": "BR1.5",
+      "status": "OK",
+      "target": "server/src/http/problem.ts"
+    },
+    {
+      "id": "BR2.1",
+      "status": "OK",
+      "target": "edge/src/gate.ts"
+    },
+    {
+      "id": "BR2.4",
+      "status": "N/A",
+      "target": "withdrawn by NFR2.3 at NFR Requirements"
+    },
+    {
+      "id": "BR5.1",
+      "status": "OK",
+      "target": "server/src/log/request-log.ts"
+    },
+    {
+      "id": "BR2.2",
+      "status": "OK",
+      "target": "infra/environment/main.tf"
+    },
+    {
+      "id": "BR2.3",
+      "status": "OK",
+      "target": "edge/src/gate.ts"
+    },
+    {
+      "id": "BR2.5",
+      "status": "N/A",
+      "target": "the access gate is removed at the switch, in a later Unit; here it is only the on/off variable"
+    },
+    {
+      "id": "BR3.1",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "BR3.2",
+      "status": "OK",
+      "target": "vitest.config.ts"
+    },
+    {
+      "id": "BR3.3",
+      "status": "OK",
+      "target": "infra/setup/github-settings.sh"
+    },
+    {
+      "id": "BR3.4",
+      "status": "OK",
+      "target": ".github/workflows/deliver.yml"
+    },
+    {
+      "id": "BR3.5",
+      "status": "OK",
+      "target": ".github/workflows/deliver.yml"
+    },
+    {
+      "id": "BR3.6",
+      "status": "OK",
+      "target": ".github/workflows/deliver.yml"
+    },
+    {
+      "id": "BR3.7",
+      "status": "OK",
+      "target": "scripts/src/smoke-check.ts"
+    },
+    {
+      "id": "BR6.1",
+      "status": "OK",
+      "target": ".github/workflows/go-back.yml"
+    },
+    {
+      "id": "BR4.1",
+      "status": "OK",
+      "target": "infra/setup/setup.sh"
+    },
+    {
+      "id": "BR4.2",
+      "status": "OK",
+      "target": ".github/actions/deploy/action.yml"
+    },
+    {
+      "id": "BR4.3",
+      "status": "OK",
+      "target": "infra/setup/budget.tf"
+    },
+    {
+      "id": "BR4.4",
+      "status": "OK",
+      "target": ".github/workflows/compare.yml"
+    },
+    {
+      "id": "BR5.2",
+      "status": "OK",
+      "target": "infra/modules/monitoring/main.tf"
+    },
+    {
+      "id": "BR5.3",
+      "status": "OK",
+      "target": "infra/modules/monitoring/main.tf"
+    },
+    {
+      "id": "BR5.4",
+      "status": "OK",
+      "target": "server/src/log/scrub.ts"
+    },
+    {
+      "id": "BR6.2",
+      "status": "Deferred",
+      "target": "deployment-execution"
+    },
+    {
+      "id": "BR6.3",
+      "status": "OK",
+      "target": ".github/workflows/checks.yml"
+    },
+    {
+      "id": "BR7.1",
+      "status": "OK",
+      "target": "scripts/src/repository-rules.ts"
+    },
+    {
+      "id": "BR7.2",
+      "status": "OK",
+      "target": "docs/examples.md"
+    }
+  ]
+}

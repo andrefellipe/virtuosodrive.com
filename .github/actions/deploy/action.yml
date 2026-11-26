@@ -1,0 +1,241 @@
+name: Deploy a Release to one environment
+description: >
+  Puts one built Release in place in one environment, in the order the
+  reliability design fixes (R3): infrastructure, database, server, page; then
+  the smoke check. Records the Deployment with its outcome. The caller has
+  already obtained the environment's AWS identity and downloaded the Release
+  into dist/.
+
+inputs:
+  environment:
+    description: test or production
+    required: true
+  version:
+    description: The Release's version (the commit's short identifier)
+    required: true
+  state-bucket:
+    description: The bucket holding Terraform's state
+    required: true
+  pause-seconds:
+    description: Seconds between showing Terraform's plan and applying it; a chance to cancel
+    required: false
+    default: "0"
+  github-token:
+    description: Token used to read and write the record of Deployments
+    required: true
+
+outputs:
+  outcome:
+    description: succeeded, notPutInPlace or inPlaceButFailing
+    value: ${{ steps.record.outputs.outcome }}
+
+runs:
+  using: composite
+  steps:
+    - name: Find what is running, from the record of Deployments
+      id: running
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        ENVIRONMENT: ${{ inputs.environment }}
+      run: |
+        gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=releases-${ENVIRONMENT}&per_page=100" > deployments.json
+        # "-" stands for "none" in each of the three places.
+        read -r RUNNING_RELEASE RUNNING_SHA RUNNING_LAMBDA _ <<< "$(node scripts/src/deployment-record.ts running < deployments.json) - - -"
+        echo "release=${RUNNING_RELEASE}" >> "${GITHUB_OUTPUT}"
+        echo "sha=${RUNNING_SHA}" >> "${GITHUB_OUTPUT}"
+        echo "lambda=${RUNNING_LAMBDA}" >> "${GITHUB_OUTPUT}"
+        if [ "${RUNNING_RELEASE}" = "-" ]; then
+          echo "No Release has been put in place here yet: this is the first deployment."
+        else
+          echo "Running: Release ${RUNNING_RELEASE} (function version ${RUNNING_LAMBDA})."
+        fi
+
+    - name: Refuse to put an older Release over a newer one
+      if: steps.running.outputs.release != '-'
+      shell: bash
+      env:
+        RUNNING_SHA: ${{ steps.running.outputs.sha }}
+        RUNNING_RELEASE: ${{ steps.running.outputs.release }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        if [ "${GITHUB_SHA}" != "${RUNNING_SHA}" ] && git merge-base --is-ancestor "${GITHUB_SHA}" "${RUNNING_SHA}"; then
+          echo "::error::Release ${VERSION} is older than Release ${RUNNING_RELEASE}, which is running. It is not deployed. To return to an earlier Release, use the go-back workflow."
+          exit 1
+        fi
+
+    - name: "Infrastructure: Terraform's plan, shown"
+      id: plan
+      shell: bash
+      working-directory: infra/environment
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+        STATE_BUCKET: ${{ inputs.state-bucket }}
+      run: |
+        terraform init -input=false \
+          -backend-config="bucket=${STATE_BUCKET}" \
+          -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \
+          -backend-config="region=${AWS_REGION}" \
+          -backend-config="use_lockfile=true"
+        terraform plan -input=false -var-file="${ENVIRONMENT}.tfvars" -out=release.tfplan
+
+    - name: "Infrastructure: a pause in which the run can be cancelled"
+      if: inputs.pause-seconds != '0'
+      shell: bash
+      env:
+        PAUSE_SECONDS: ${{ inputs.pause-seconds }}
+      run: |
+        echo "The plan above is applied, unchanged, in ${PAUSE_SECONDS} seconds. Cancel the run now to stop it."
+        sleep "${PAUSE_SECONDS}"
+
+    - name: "Infrastructure: exactly that plan, applied"
+      id: apply
+      shell: bash
+      working-directory: infra/environment
+      run: |
+        terraform apply -input=false release.tfplan
+        {
+          echo "SITE_URL=$(terraform output -raw site_url)"
+          echo "SERVER_FUNCTION=$(terraform output -raw server_function_name)"
+          echo "MIGRATE_FUNCTION=$(terraform output -raw migrate_function_name)"
+          echo "RELEASES_BUCKET=$(terraform output -raw releases_bucket)"
+          echo "PAGES_BUCKET=$(terraform output -raw pages_bucket)"
+          echo "PASSWORD_PARAMETER=$(terraform output -raw access_password_parameter)"
+        } >> "${GITHUB_ENV}"
+
+    - name: Store the Release's packages and read the access password
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        aws s3 cp dist/server.zip "s3://${RELEASES_BUCKET}/server/${VERSION}.zip" --only-show-errors
+        aws s3 cp dist/db-migrate.zip "s3://${RELEASES_BUCKET}/db-migrate/${VERSION}.zip" --only-show-errors
+        ACCESS_PASSWORD="$(aws ssm get-parameter --name "${PASSWORD_PARAMETER}" --with-decryption --query Parameter.Value --output text)"
+        echo "::add-mask::${ACCESS_PASSWORD}"
+        echo "VD_ACCESS_PASSWORD=${ACCESS_PASSWORD}" >> "${GITHUB_ENV}"
+
+    - name: Smoke check of the running version, after the infrastructure change
+      # Skipped on a first deployment: only the placeholder is running, and it answers 503 by design.
+      if: steps.running.outputs.release != '-'
+      shell: bash
+      env:
+        VD_ENVIRONMENT: ${{ inputs.environment }}
+      run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts smoke
+
+    - name: Database changes
+      id: database
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        # The call is made once and waited for: a slow run is neither abandoned nor started twice.
+        AWS_MAX_ATTEMPTS: "1"
+      run: |
+        RUNNER_VERSION="$(aws lambda update-function-code --function-name "${MIGRATE_FUNCTION}" \
+          --s3-bucket "${RELEASES_BUCKET}" --s3-key "db-migrate/${VERSION}.zip" --publish \
+          --query Version --output text)"
+        aws lambda wait published-version-active --function-name "${MIGRATE_FUNCTION}" --qualifier "${RUNNER_VERSION}"
+        aws lambda invoke --function-name "${MIGRATE_FUNCTION}" --qualifier "${RUNNER_VERSION}" \
+          --cli-read-timeout 330 --cli-connect-timeout 10 \
+          --query FunctionError --output text migrate-answer.json > migrate-error.txt
+        echo "The change runner answered:"
+        cat migrate-answer.json
+        echo
+        if [ "$(cat migrate-error.txt)" != "None" ]; then
+          echo "::error::The database changes failed. The new version was not put in place."
+          exit 1
+        fi
+
+    - name: "Switch: the server, then the page, the entry document last"
+      id: switch
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        PREVIOUS_RELEASE: ${{ steps.running.outputs.release }}
+      run: |
+        PREVIOUS_LAMBDA="$(aws lambda get-alias --function-name "${SERVER_FUNCTION}" --name live --query FunctionVersion --output text)"
+        put_back() {
+          echo "::error::The switch failed. Putting back what was running."
+          aws lambda update-alias --function-name "${SERVER_FUNCTION}" --name live --function-version "${PREVIOUS_LAMBDA}" > /dev/null
+          if [ "${PREVIOUS_RELEASE}" != "-" ]; then
+            aws s3 cp "s3://${PAGES_BUCKET}/r/${PREVIOUS_RELEASE}/index.html" "s3://${PAGES_BUCKET}/index.html" \
+              --cache-control "no-store" --content-type "text/html; charset=utf-8" --only-show-errors
+          fi
+        }
+        trap put_back ERR
+
+        aws lambda update-function-code --function-name "${SERVER_FUNCTION}" \
+          --s3-bucket "${RELEASES_BUCKET}" --s3-key "server/${VERSION}.zip" > /dev/null
+        aws lambda wait function-updated-v2 --function-name "${SERVER_FUNCTION}"
+        NEW_LAMBDA="$(aws lambda publish-version --function-name "${SERVER_FUNCTION}" \
+          --description "release ${VERSION}" --query Version --output text)"
+        aws lambda wait published-version-active --function-name "${SERVER_FUNCTION}" --qualifier "${NEW_LAMBDA}"
+        echo "lambda=${NEW_LAMBDA}" >> "${GITHUB_OUTPUT}"
+        aws lambda update-alias --function-name "${SERVER_FUNCTION}" --name live --function-version "${NEW_LAMBDA}" > /dev/null
+
+        # Fingerprinted files: stored for a year. The entry document: never.
+        aws s3 cp dist/web/assets "s3://${PAGES_BUCKET}/r/${VERSION}/assets" --recursive \
+          --cache-control "public, max-age=31536000, immutable" --only-show-errors
+        aws s3 cp dist/web/index.html "s3://${PAGES_BUCKET}/r/${VERSION}/index.html" \
+          --cache-control "no-store" --content-type "text/html; charset=utf-8" --only-show-errors
+        aws s3 cp dist/web/index.html "s3://${PAGES_BUCKET}/index.html" \
+          --cache-control "no-store" --content-type "text/html; charset=utf-8" --only-show-errors
+
+    - name: Smoke check of the new version
+      id: smoke
+      shell: bash
+      env:
+        VD_ENVIRONMENT: ${{ inputs.environment }}
+        VD_EXPECTED_VERSION: ${{ inputs.version }}
+      run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts smoke
+
+    - name: Record the Deployment and its outcome
+      id: record
+      if: always() && steps.apply.outcome != 'skipped'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        VERSION: ${{ inputs.version }}
+        SWITCHED: ${{ steps.switch.outcome }}
+        SMOKE: ${{ steps.smoke.outcome }}
+        NEW_LAMBDA: ${{ steps.switch.outputs.lambda }}
+      run: |
+        if [ "${SWITCHED}" = "success" ] && [ "${SMOKE}" = "success" ]; then
+          OUTCOME="succeeded"
+        elif [ "${SWITCHED}" = "success" ]; then
+          OUTCOME="inPlaceButFailing"
+        else
+          OUTCOME="notPutInPlace"
+        fi
+        echo "outcome=${OUTCOME}" >> "${GITHUB_OUTPUT}"
+        echo "Deployment of Release ${VERSION} to ${ENVIRONMENT}: ${OUTCOME}." | tee -a "${GITHUB_STEP_SUMMARY}"
+        jq -n --arg ref "${GITHUB_SHA}" --arg environment "releases-${ENVIRONMENT}" \
+          --arg release "${VERSION}" --arg lambda "${NEW_LAMBDA}" --arg outcome "${OUTCOME}" \
+          '{ref: $ref, environment: $environment, auto_merge: false, required_contexts: [],
+            description: ("Release " + $release + ": " + $outcome),
+            payload: {release: $release, lambdaVersion: $lambda, direction: "forward", outcome: $outcome}}' |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - > /dev/null
+
+    - name: Remove Releases older than the ten most recent
+      if: steps.record.outputs.outcome == 'succeeded'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        PREVIOUS_RELEASE: ${{ steps.running.outputs.release }}
+      run: |
+        aws s3api list-objects-v2 --bucket "${RELEASES_BUCKET}" --prefix "server/" \
+          --query 'Contents[].{version: Key, storedAt: LastModified}' --output json |
+          jq 'map(.version |= (sub("^server/"; "") | sub("\\.zip$"; "")))' |
+          node scripts/src/prune-releases.ts "${VERSION}" "${PREVIOUS_RELEASE}" > to-remove.txt
+        while read -r OLD; do
+          [ -n "${OLD}" ] || continue
+          echo "Removing Release ${OLD}"
+          aws s3 rm "s3://${RELEASES_BUCKET}/server/${OLD}.zip" --only-show-errors
+          aws s3 rm "s3://${RELEASES_BUCKET}/db-migrate/${OLD}.zip" --only-show-errors
+          aws s3 rm "s3://${PAGES_BUCKET}/r/${OLD}/" --recursive --only-show-errors
+          OLD_LAMBDA="$(aws lambda list-versions-by-function --function-name "${SERVER_FUNCTION}" \
+            --query "Versions[?Description=='release ${OLD}'].Version | [0]" --output text)"
+          if [ "${OLD_LAMBDA}" != "None" ]; then
+            aws lambda delete-function --function-name "${SERVER_FUNCTION}" --qualifier "${OLD_LAMBDA}"
+          fi
+        done < to-remove.txt

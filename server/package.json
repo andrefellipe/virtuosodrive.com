@@ -1,0 +1,15 @@
+{
+  "name": "@virtuoso-drive/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The server function: operations, request steps, database access.",
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "2.37.0",
+    "@aws-lambda-powertools/metrics": "2.37.0",
+    "@aws-sdk/client-secrets-manager": "3.1178.0",
+    "@aws-sdk/rds-signer": "3.1178.0",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  }
+}
