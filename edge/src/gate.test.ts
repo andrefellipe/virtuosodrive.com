@@ -88,6 +88,11 @@ describe("the access gate", () => {
         "text/html; charset=utf-8",
       );
       expect(response.headers["cache-control"]?.value).toBe("no-store");
+      // The same header the edge's own rules send: one year, and every name
+      // beneath the site's.
+      expect(response.headers["strict-transport-security"]?.value).toBe(
+        "max-age=31536000; includeSubDomains",
+      );
       expect(response.body.data).toBe(passwordPageHtml());
     }
   });
