@@ -46,6 +46,11 @@ locals {
 # The name begins with fixed text and ends in a generated suffix. When the
 # group has to be replaced, the new one is created before the old one is
 # removed, so the two exist together for a moment and cannot share a name.
+#
+# Changing the group's description or its family replaces the group; changing
+# a setting does not. A replaced group takes effect only at the database's
+# next restart: until then the database reports it as waiting for a reboot
+# and keeps running with the settings it started with.
 resource "aws_db_parameter_group" "this" {
   name_prefix = local.parameter_group_name_prefix
   family      = "postgres${var.engine_major_version}"
@@ -75,8 +80,11 @@ resource "aws_db_parameter_group" "this" {
 }
 
 # The master password is generated, never chosen and never in the repository.
-# The data source gives a new value at every plan; the two resources that use
-# it ignore later values, so the password is the one generated at creation.
+# The data source gives a new value at every plan. Only the stored secret
+# takes that value, once, when it is first written, and it ignores every
+# later one. The database does not read the data source: it takes its
+# password from the stored secret, so the two cannot differ, whichever run
+# creates which.
 data "aws_secretsmanager_random_password" "master" {
   password_length     = 32
   exclude_punctuation = true
@@ -100,6 +108,11 @@ resource "aws_secretsmanager_secret_version" "master" {
   lifecycle {
     ignore_changes = [secret_string]
   }
+}
+
+locals {
+  # The password as the secret holds it: the one value the database is given.
+  master_password = jsondecode(aws_secretsmanager_secret_version.master.secret_string).password
 }
 
 # Declared here so that the database's log is kept 30 days, not forever.
@@ -128,7 +141,7 @@ resource "aws_db_instance" "this" {
 
   db_name  = local.database_name
   username = local.master_username
-  password = data.aws_secretsmanager_random_password.master.random_password
+  password = local.master_password
   port     = 5432
 
   iam_database_authentication_enabled = true
@@ -157,7 +170,9 @@ resource "aws_db_instance" "this" {
   lifecycle {
     # Terraform refuses to destroy the database (reliability design R6).
     prevent_destroy = true
-    ignore_changes  = [password, engine_version]
+    # The password is not ignored: if the database's ever differs from the
+    # secret's, the next run sets it to the secret's, in place.
+    ignore_changes = [engine_version]
   }
 }
 

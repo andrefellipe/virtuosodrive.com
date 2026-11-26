@@ -195,13 +195,91 @@ second change:
 Not run for this fix: Checkov, which is not installed on this machine and
 runs on the pull request; and anything against AWS.
 
+## Corrected after the pipeline's second run
+
+The second run of the `deliver` workflow, on 2026-11-26, finished Terraform.
+Everything Terraform defines for the test environment now exists, including
+the database, the two functions, the entry point and the dashboard. The
+half-made settings group left by the first run was replaced and removed, as
+planned. The run then failed at the next step, the database changes.
+
+**What failed, and why.** The change runner could not sign in to the new
+database with the master password from Secrets Manager. In
+`infra/modules/database/main.tf` both the stored secret and the database took
+the password straight from the source that generates it, and that source
+gives a new value at every run. The secret was written in the first run and
+keeps that run's value. The database was created in the second run and was
+given the second run's value. So the two held different passwords (checked on
+2026-11-26, read-only). The access password and the edge's secret were never
+affected: what uses them reads the stored value, not the generating source.
+
+**What was changed.**
+
+- `infra/modules/database/main.tf`: the database now takes its master password from the stored secret's own value (a local, `master_password`, read out of the secret). Only the secret takes a value from the generating source, once, when it is first written. This is the same wiring the access password and the edge's secret already had. The comment above the generating source now describes this.
+- In the same file, `password` is no longer in the list of things Terraform ignores on the database. The pipeline's next run therefore sets the existing test database's password to the secret's. That is a change in place: the database is not replaced, `prevent_destroy` stays, and `engine_version` is still ignored.
+- No password is printed or written anywhere by this change. There is no new output, and Terraform treats the value read from the secret as sensitive, as it did the generated one.
+
+**How the test covers it.** New file
+`infra/environment/tests/master-password.tftest.hcl`, three runs that apply
+the database module by itself with the stand-in provider, touching no AWS
+account. The test tool can vary the generated value between runs
+(`override_data` in each run), and can create the secret alone first (a
+targeted apply), so the fault is reproduced as it happened:
+
+1. The first run creates only the secret, with the generated value set to one placeholder.
+2. The second run creates everything else, including the database, with the generated value set to a different placeholder. It asserts that the secret kept the first value and that the database's password equals the secret's.
+3. The third run generates a third value and asserts that neither the secret nor the database changed.
+
+With the old wiring put back for a moment, the second and third runs failed
+(the database held the second run's placeholder, the secret the first's);
+with the fix restored, all three pass. The first run prints Terraform's
+standing warning about targeted applies; that is expected.
+
+What the test cannot cover: the correction of the existing test database,
+whose password already differs from the secret's. The stand-in provider
+cannot start from a database with another password without the old code, so
+that the next run changes the password in place is reasoned from how
+Terraform treats a changed, no-longer-ignored `password`, and is first proved
+by the pipeline's next run. Whether AWS applies the new password before the
+change runner signs in during that same run is also unproved until then: AWS
+documents a master password change as applied asynchronously, as soon as
+possible, whatever the database's "apply immediately" setting. If the change
+runner is too early, running the pipeline again would settle it.
+
+The new test's runs use a module named in the test file, so
+`terraform init -backend=false` must have been run after the file was added.
+The `checks` workflow already runs that before the tests.
+
+**Three small corrections left by the earlier reviews.**
+
+- `edge/src/gate.ts`: the access gate's own 401 answer now sends the transport security header with `includeSubDomains`, as the edge's rules do. `edge/src/gate.test.ts` asserts the exact header. This replaces the note in "Corrected after the pull request's first scan" that the gate's header was unchanged. The built gate is 5,808 bytes against the limit of 10,240.
+- `infra/modules/database/main.tf`: a comment on the settings group says that changing its description or family replaces it, and that a replaced group takes effect only at the database's next restart.
+- The line under "Not verified" asking whether RDS offers PostgreSQL 18 with the `postgres18` family is removed: the pipeline created both.
+
+`source-manifest.json` lists the new test file.
+
+Run on 2026-11-26, before commit:
+
+| Command | Result |
+|---------|--------|
+| `terraform fmt -check -recursive infra` | Clean (after one alignment fix by `terraform fmt`) |
+| `terraform -chdir=infra/environment validate` | Valid |
+| `terraform -chdir=infra/setup validate` | Valid |
+| `terraform -chdir=infra/environment test` | 8 runs passed, 0 failed (5 as before, 3 new) |
+| `terraform -chdir=infra/setup test` | 3 runs passed, 0 failed |
+| `npm run check` | Exit 0: format, lint, type check, 189 tests passed in 26 files with coverage (lines 91.64%, 757 of 826), build, repository checks (779 files) |
+
+The number of unit and integration tests is unchanged at 189: the gate's
+header is one more assertion in an existing test. Not run for this fix:
+Checkov, which is not installed on this machine and runs on the pull request;
+the end-to-end tests; and anything against AWS.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.
 - Whether the CloudFront Functions runtime accepts the built gate; it ran only in a Node sandbox.
 - Whether response headers policies apply to the gate's own 401 answer. The gate sets its headers itself.
 - The gate's log group name.
-- Whether RDS offers PostgreSQL 18 with parameter family `postgres18` in us-east-1.
 - Whether a budget and the cost-allocation tag can be set up by the script without a console step.
 - The `environment:` expression in `go-back.yml` and `compare.yml`, which relies on an empty name meaning no environment.
 - Whether GitHub's plan allows branch protection and required reviewers.

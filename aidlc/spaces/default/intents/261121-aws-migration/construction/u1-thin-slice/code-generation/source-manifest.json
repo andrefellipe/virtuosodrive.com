@@ -166,6 +166,9 @@
       "path": "infra/environment/tests/fixtures/access-gate.txt"
     },
     {
+      "path": "infra/environment/tests/master-password.tftest.hcl"
+    },
+    {
       "path": "infra/environment/tests/naming.tftest.hcl"
     },
     {

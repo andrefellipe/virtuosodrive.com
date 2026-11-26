@@ -125,7 +125,9 @@ export function refusal(settings: GateSettings): EdgeResponse {
       "content-type": { value: "text/html; charset=utf-8" },
       "cache-control": { value: "no-store" },
       "content-security-policy": { value: policy },
-      "strict-transport-security": { value: "max-age=31536000" },
+      "strict-transport-security": {
+        value: "max-age=31536000; includeSubDomains",
+      },
       "x-content-type-options": { value: "nosniff" },
       "referrer-policy": { value: "same-origin" },
     },
