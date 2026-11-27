@@ -79,6 +79,12 @@
       "path": "db-migrate/src/runner.ts"
     },
     {
+      "path": "db-migrate/src/sign-in.test.ts"
+    },
+    {
+      "path": "db-migrate/src/sign-in.ts"
+    },
+    {
       "path": "db-migrate/src/testing/postgres.ts"
     },
     {

@@ -709,6 +709,85 @@ was not touched.
 - The provider's behaviour was read in its source, not tried against AWS.
 - Checkov was not run here.
 
+## The change runner waits out a slow first sign-in (Step 24)
+
+Built on 2026-11-27. Nothing was committed, pushed or deployed, and no
+workflow was started. No Terraform file and no settings file was changed.
+
+**What was found.** Pull request 29 set `use_restored_copy = true`; its
+`deliver` run of 21:50 UTC gave both functions the copy's address and
+started the change runner. The copy received the connection at 21:52:21;
+the change runner gave up at 21:52:31, its limit of 10 seconds; the copy
+completed the sign-in as `migrator` at 21:52:41, having spent 19.2 seconds
+on the check of the AWS identity (`authentication=19180.947 ms` in the
+copy's own log). The network, the permissions and the copy were in order.
+The Deployment was recorded as `notPutInPlace` and test went on answering
+from the first database.
+
+**What was changed.**
+
+- `db-migrate/src/sign-in.ts`, new: `signIn`, which makes one try and, if that fails for any reason other than a refused sign-in, one more.
+  - One try is: ask for credentials, make a connection with them, open it. For `migrator` the credentials are a new sign-in token; for the master sign-in the secret is read again.
+  - A try that fails closes the connection it made, as before; a failure to close does not hide the sign-in's own error.
+  - A refusal (`isSignInRefusal` in `decide.ts`, codes `28000` and `28P01`; the codes are not repeated) is thrown at once, the same error object, with no second try and no log line. The runner's decision whether this is a new environment therefore sees what it saw before. `runner.ts` is unchanged.
+  - Before the second try one line is logged, at warning level: who was signing in, the first error's message, and that one more try follows. The try's password or token is cut out of that message if it ever appears in it.
+  - The second try's error is thrown unchanged, whatever it is.
+  - The file imports neither the database driver nor anything of AWS. `SIGN_IN_TRY_LIMIT_MS` is 30,000.
+- `db-migrate/src/index.ts`: `connect()` is split. `createConnection` makes the driver's client, with `connectionTimeoutMillis` of 30 seconds where it was 10; `migratorCredentials` and `masterCredentials` get the token and the secret; `connectAsMigrator` and `connectAsMaster` call `signIn` with them. `CONNECT_LIMIT_MS` is gone.
+- At worst a sign-in now takes a little over 60 seconds. The function's limit (300 seconds) and the pipeline's wait (330) are unchanged.
+- The server is not changed, as the plan says.
+- `docs/operations.md`, procedure 4: step 5 says the first sign-in to a copy is slow and that the change runner waits for it; a new paragraph, "When the run that points the site at the copy fails at the database changes", after "When the restore takes too long", gives this failure, what was done, and what to do if it recurs.
+- `docs/records/restore.md`: the second attempt at making the copy (pull request 28, which succeeded) and the failed run of pull request 29, each with its times; two dated notes. The rehearsal's two tables are left empty.
+- `source-manifest.json`: the two new files added.
+
+**Tests.** `db-migrate/src/sign-in.test.ts`, 12 unit tests, with injected
+functions and no waiting: each try has 30 seconds; the first try succeeds
+and no second is made; a timeout then a success returns the second
+connection and logs one line; each try asks for a new token and the
+abandoned connection is closed; two timeouts throw the second error, both
+connections closed, no third try; a refusal (each of the two codes) is
+thrown at once with no second try and no log line; a refusal at the second
+try is passed on unchanged; a token that could not be made is tried again;
+the token is never in the log line, even when the error repeats it; a
+failure to close the abandoned connection does not hide the error; a thrown
+value that is not an error is logged plainly.
+
+### Run on 2026-11-27, fifth round
+
+| Command | Result |
+|---------|--------|
+| `npm run check`, before any change | Exit 0: 211 tests in 27 files, repository checks (800 files) |
+| `npm run check` | Exit 0: format, lint, type check, 223 tests passed in 28 files with coverage (lines 91.78%, 816 of 889; statements 91.54%; branches 88.2%; functions 89.22%), build (page 75,324 bytes compressed, gate 6,377 bytes), repository checks (802 files) |
+| `terraform -chdir=infra/setup fmt -check -recursive` | Clean, exit 0 |
+| `terraform -chdir=infra/environment fmt -check -recursive` | Clean, exit 0 |
+| `terraform -chdir=infra/setup validate` | Valid, exit 0 |
+| `terraform -chdir=infra/environment validate` | Valid, exit 0 |
+| `terraform -chdir=infra/setup test` | 3 passed, 0 failed, exit 0 |
+| `terraform -chdir=infra/environment test` | 23 passed, 0 failed, exit 0 |
+
+The tests are 223 where they were 211: 12 new, none removed or changed. The
+80% threshold was not touched. `sign-in.ts` is covered in full. Lines
+overall went from 92.1% to 91.78%, because `index.ts`, the function's entry
+point, grew and is run by no test, as before (15.6% of its lines; the folder
+`db-migrate/src` is at 77.4%).
+
+**Not proven.**
+
+- The 30 seconds and the second try have not been exercised against AWS. They rest on the unit tests and on the one measurement of 19.2 seconds. The run of this step's own pull request points test at the copy, but the copy has now been signed in to once, so that sign-in will probably be quick and will not show either.
+- That the driver's `connectionTimeoutMillis` covers the whole sign-in, the identity check included, is taken from what happened on 2026-11-27 (it cut the sign-in off at 10 seconds during that check); it was not tried again at 30.
+- `index.ts` is not run by any test: that `createConnection` passes the 30 seconds to the driver, and that the two sign-ins are wired to `signIn` as described, were checked by the type check and by reading.
+- Whether a second token really differs from the first in AWS. The test shows a second one is asked for.
+- Whether the server's first call to the copy passes inside its 3 seconds, or is covered by the smoke check's five tries. The run will show.
+- In `docs/records/restore.md`, the times of both runs are as given by the conductor; they were not read again from AWS or GitHub in this round.
+
+**Different from the plan or the brief, and noticed.**
+
+- The log line also has the try's own password or token cut out of the error's message. The plan asks only that the line not contain it; no error seen so far does.
+- The log line is written at warning level; the runner's other lines are at information level.
+- The branch checked out when this was built was `u1-rehearsal-9`, not `u1-patient-change-runner`, which did not exist on this machine. No branch was made or changed; the edits are in the working tree, uncommitted.
+- One run of `npm run check` had its output sent to a file in the repository's root, against the working rule; the file was deleted and the repository checks were run again without it (802 files).
+- `unit-test-instructions.md` is part of the approved plan and was not edited; its count for the change runner (6) is further behind.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.

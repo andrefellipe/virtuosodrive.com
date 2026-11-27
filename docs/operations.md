@@ -242,6 +242,17 @@ whole time.
    The site keeps answering from the first database until that switch, a few
    seconds at the end of the run.
 
+   The first sign-in to a copy is slow. A database that has never been
+   signed in to by AWS identity takes a long time over its first check of
+   one: 19 seconds when measured on 2026-11-27, where a sign-in to the first
+   database takes under half a second. The change runner waits for it: it
+   gives a sign-in 30 seconds, and if a try fails for any reason other than
+   the database refusing the sign-in, it writes one line to its log and
+   tries once more. The server is not as patient: it gives the database 3
+   seconds in a request, so its own first call to the copy may fail. The
+   deployment's smoke check tries five times, which is expected to cover
+   that.
+
 **Confirm.**
 
 6. Open the site. The answered view means the server read the copy.
@@ -354,6 +365,28 @@ then reports that the copy already exists, it must be brought into
 Terraform's record (`terraform import`) or deleted, and deleting a database
 by hand, even this copy, is your decision to make, not a step of this
 procedure.
+
+**When the run that points the site at the copy fails at the database
+changes.** This happened on 2026-11-27 (`docs/records/restore.md`). The
+change runner then gave a sign-in 10 seconds and tried once; the copy took
+19 seconds over its first check of an AWS identity, so the change runner
+gave up while the copy was still signing it in. The network, the
+permissions and the copy were in order. The Deployment was recorded as
+`notPutInPlace` and the site went on answering from the first database with
+the Release it had: the database changes come before the switch, so a
+failure there leaves the running version alone. Both functions' settings
+named the copy from then on, but the running version of the server keeps
+the address it was published with.
+
+What was done about it: the change runner now gives each try 30 seconds and
+tries a second time, as step 5 says. If it happens again all the same, the
+change runner's log says why each try failed: in CloudWatch, the log group
+`/vd/test/db-migrate`, or `aws logs tail /vd/test/db-migrate --since 1h`. A
+timeout on both tries means the copy took over 30 seconds twice: start the
+failed run's failed jobs again ("Re-run failed jobs"), since a copy that has
+been signed in to once answers quickly afterwards. A refused sign-in is not
+a slow copy and is not helped by trying again; read the message, which says
+what the change runner found.
 
 **What the switches do not do.**
 
