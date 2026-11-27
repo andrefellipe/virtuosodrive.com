@@ -12,37 +12,40 @@ import type { RunnerConfig } from "./config.ts";
 import { CREATE_USERS_FILE, MIGRATIONS_DIR, REHEARSAL_DIR } from "./paths.ts";
 import { runChanges } from "./runner.ts";
 import type { RunReport } from "./runner.ts";
+import { SIGN_IN_TRY_LIMIT_MS, signIn } from "./sign-in.ts";
+import type { Credentials } from "./sign-in.ts";
 
 /**
  * The change runner function's entry point. The pipeline starts it and waits
  * for its answer; a thrown error fails the Deployment before the new version
  * of the server is put in place.
+ *
+ * How patiently it signs in to the database is in `sign-in.ts`.
  */
 
 const CA_FILE = fileURLToPath(
   new URL("../certs/rds-us-east-1-bundle.pem", import.meta.url),
 );
-const CONNECT_LIMIT_MS = 10_000;
 
 const logger = new Logger({ serviceName: "db-migrate", logLevel: "INFO" });
 
-function connect(
+/** A connection made but not yet opened; `signIn` opens it, or closes it. */
+function createConnection(
   config: RunnerConfig,
-  user: string,
-  password: string,
-): Promise<Client> {
+  credentials: Credentials,
+): Client {
   const client = new Client({
     host: config.database.host,
     port: config.database.port,
     database: config.database.name,
-    user,
-    password,
+    user: credentials.user,
+    password: credentials.password,
     ssl: {
       ca: readFileSync(CA_FILE, "utf8"),
       rejectUnauthorized: true,
       minVersion: "TLSv1.2",
     },
-    connectionTimeoutMillis: CONNECT_LIMIT_MS,
+    connectionTimeoutMillis: SIGN_IN_TRY_LIMIT_MS,
     application_name: "virtuoso-drive-db-migrate",
   });
   // Without a listener, an error on an idle connection would stop the process.
@@ -51,26 +54,21 @@ function connect(
       reason: error.message,
     });
   });
-  return client.connect().then(
-    () => client,
-    async (error: unknown) => {
-      await client.end().catch(() => undefined);
-      throw error;
-    },
-  );
+  return client;
 }
 
-async function connectAsMigrator(config: RunnerConfig): Promise<Client> {
+/** A sign-in token made from the function's own identity; new at every call. */
+async function migratorCredentials(config: RunnerConfig): Promise<Credentials> {
   const token = await new Signer({
     hostname: config.database.host,
     port: config.database.port,
     username: "migrator",
     region: config.region,
   }).getAuthToken();
-  return connect(config, "migrator", token);
+  return { user: "migrator", password: token };
 }
 
-async function connectAsMaster(config: RunnerConfig): Promise<Client> {
+async function masterCredentials(config: RunnerConfig): Promise<Credentials> {
   const secrets = new SecretsManagerClient({ region: config.region });
   const answer = await secrets.send(
     new GetSecretValueCommand({ SecretId: config.masterSecretId }),
@@ -79,7 +77,25 @@ async function connectAsMaster(config: RunnerConfig): Promise<Client> {
     throw new Error("The database master secret has no text value");
   }
   const master = parseMasterSecret(answer.SecretString);
-  return connect(config, master.username, master.password);
+  return { user: master.username, password: master.password };
+}
+
+function connectAsMigrator(config: RunnerConfig): Promise<Client> {
+  return signIn({
+    who: '"migrator"',
+    getCredentials: () => migratorCredentials(config),
+    createConnection: (credentials) => createConnection(config, credentials),
+    log: (message) => logger.warn(message),
+  });
+}
+
+function connectAsMaster(config: RunnerConfig): Promise<Client> {
+  return signIn({
+    who: "the master user",
+    getCredentials: () => masterCredentials(config),
+    createConnection: (credentials) => createConnection(config, credentials),
+    log: (message) => logger.warn(message),
+  });
 }
 
 export async function handler(): Promise<RunReport> {
