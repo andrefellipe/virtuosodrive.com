@@ -1,4 +1,11 @@
-import { ACCESS_COOKIE, passwordPageHtml } from "./password-page.ts";
+import {
+  ACCESS_COOKIE,
+  PAGE_SCRIPT,
+  PAGE_SCRIPT_PATH,
+  PAGE_STYLE,
+  PAGE_STYLE_PATH,
+  passwordPageHtml,
+} from "./password-page.ts";
 
 /**
  * The access gate (security design S1): a plain function of an event, run at
@@ -7,8 +14,11 @@ import { ACCESS_COOKIE, passwordPageHtml } from "./password-page.ts";
  *
  *   1. The health check is let through.
  *   2. If the gate is switched off for the environment, everything is let through.
- *   3. A request whose "vd_access" cookie has the stored SHA-256 is let through.
- *   4. Anything else is answered with status 401 and the password page, and
+ *   3. The password page's script and style, two fixed paths, are answered
+ *      by the gate itself, with or without the cookie. They hold nothing
+ *      secret, and the password page cannot work without them.
+ *   4. A request whose "vd_access" cookie has the stored SHA-256 is let through.
+ *   5. Anything else is answered with status 401 and the password page, and
  *      one log line is written with the operation "access refused".
  *
  * For requests that are let through and are not for the server, a path that
@@ -50,9 +60,6 @@ export interface GateSettings {
   enabled: string;
   /** SHA-256 of the access password, in hexadecimal. The password itself is never here. */
   accessHash: string;
-  /** SHA-256 of the password page's script and style, in base64, for its content security policy. */
-  scriptHash: string;
-  styleHash: string;
 }
 
 export interface GateTools {
@@ -111,20 +118,40 @@ function carriesThePassword(
   );
 }
 
-export function refusal(settings: GateSettings): EdgeResponse {
-  const policy =
-    "default-src 'none'; script-src 'sha256-" +
-    settings.scriptHash +
-    "'; style-src 'sha256-" +
-    settings.styleHash +
-    "'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+/**
+ * The password page's own policy: its script and style as files from the
+ * site itself, and nothing else. The edge's header rule for pages replaces
+ * it with the ordinary page's policy, which allows the same two files; the
+ * page works under either.
+ */
+export const REFUSAL_POLICY =
+  "default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+/**
+ * One of the password page's two files. The edge's rules tell the browser
+ * not to guess a file's kind, so the content type must be exactly right.
+ */
+function pageFile(contentType: string, text: string): EdgeResponse {
+  return {
+    statusCode: 200,
+    statusDescription: "OK",
+    headers: {
+      "content-type": { value: contentType },
+      "cache-control": { value: "no-store" },
+      "x-content-type-options": { value: "nosniff" },
+    },
+    body: { encoding: "text", data: text },
+  };
+}
+
+export function refusal(): EdgeResponse {
   return {
     statusCode: 401,
     statusDescription: "Unauthorized",
     headers: {
       "content-type": { value: "text/html; charset=utf-8" },
       "cache-control": { value: "no-store" },
-      "content-security-policy": { value: policy },
+      "content-security-policy": { value: REFUSAL_POLICY },
       "strict-transport-security": {
         value: "max-age=31536000; includeSubDomains",
       },
@@ -148,6 +175,13 @@ export function handleRequest(
   if (settings.enabled === "false") {
     return letThrough(request);
   }
+  // Before the cookie is looked at, and never logged as a refusal.
+  if (request.uri === PAGE_SCRIPT_PATH) {
+    return pageFile("text/javascript; charset=utf-8", PAGE_SCRIPT);
+  }
+  if (request.uri === PAGE_STYLE_PATH) {
+    return pageFile("text/css; charset=utf-8", PAGE_STYLE);
+  }
   if (carriesThePassword(request, settings, tools)) {
     return letThrough(request);
   }
@@ -167,5 +201,5 @@ export function handleRequest(
           : "unknown",
     }),
   );
-  return refusal(settings);
+  return refusal();
 }
