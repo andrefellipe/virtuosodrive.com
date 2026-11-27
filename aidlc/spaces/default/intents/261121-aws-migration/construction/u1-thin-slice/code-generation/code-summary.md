@@ -788,6 +788,33 @@ point, grew and is run by no test, as before (15.6% of its lines; the folder
 - One run of `npm run check` had its output sent to a file in the repository's root, against the working rule; the file was deleted and the repository checks were run again without it (802 files).
 - `unit-test-instructions.md` is part of the approved plan and was not edited; its count for the change runner (6) is further behind.
 
+## The rehearsals, as they ended (Step 19, written by the conductor on 2026-11-27)
+
+All in the test environment. Each record is in `docs/records/`.
+
+| Rehearsal | Result | Record |
+|-----------|--------|--------|
+| Going back | Done: 34 seconds there, 24 seconds back | `going-back.md` |
+| The alarms | Done: the error-rate alarm raised and cleared, nothing below 20 requests, the health alarm raised and cleared | `alarm-proofs.md` |
+| The pipeline's identities | Done: `prove-identity-limits` run twice, all three attempts refused both times, the second time by explicit deny; pull request 26, never merged, was refused both identities | `alarm-proofs.md` |
+| A failing deployment | Done: `notPutInPlace`, test kept its Release, the next deployment succeeded | `failing-deployment.md` |
+| Restoring the database | Done to the point of removing the copy, which the pull request carrying this text does. Two steps failed at their first try and were fixed (Steps 23 and 24) | `restore.md` |
+| The speeds | Three of seven rows; the others are marked as owed | `measured-speeds.md` |
+
+What the run of pull request 30 showed, which Step 24's section could not
+know: the change runner signed in to the copy in 3.5 seconds and the server
+in 0.5, so neither the 30 seconds nor the second try was exercised; the
+smoke check, the end-to-end tests and the measurement passed against the
+copy; `/v1/site-information` answered the same `installedAt` from the copy
+and, after pull request 31, from the first database again.
+
+**Owed after this pull request.**
+
+- The result of removing the copy, to be added to `restore.md` by the project's next pull request.
+- The first call after 30 minutes of quiet (NFR9.2), measured by the conductor, with the question it raises: on 2026-11-27 one call after an hour of quiet answered 500, because the server's sign-in to the database took 4.1 seconds against the 3 it allows. Figures first, then a proposal to the maintainer.
+- By the maintainer: the page's first load on a throttled connection, ten calls from a connection in Brazil, the page in Edge and in each browser's previous version; whether the alarm email named the environment and the saved search.
+- The server's own `Duration` from the dashboard; the cost-reporting tag; the budget's first figure (January 2027).
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.

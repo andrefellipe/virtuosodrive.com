@@ -1,25 +1,30 @@
 # Record: restoring the database, rehearsed in the test environment
 
-Template written 2026-11-25. Begun on 2026-11-27 and not yet finished: the
-copy was not made at the first attempt and was made at the second, and the
-first run that pointed test at it failed (the three sections below). Fill
-the two tables in when the rehearsal is done (reliability design R6;
-procedure 4 in `docs/operations.md`), and add it through a pull request.
+Template written 2026-11-25. Performed 2026-11-27 (reliability design R6;
+procedure 4 in `docs/operations.md`). Times are UTC. The two tables give the
+steps that worked; two steps failed at their first try, and the three
+sections after the tables tell each as it happened.
 
-| Step                                           | Pull request or run | Time taken | Result |
-| ---------------------------------------------- | ------------------- | ---------- | ------ |
-| Restore yesterday's backup to a new database   |                     |            |        |
-| Point the test server at the restored database |                     |            |        |
-| See the slice's page answer                    |                     |            |        |
-| Switch back to the original database           |                     |            |        |
-| Remove the restored copy                       |                     |            |        |
+| Step                                           | Pull request or run                                                                                           | Time taken                                           | Result                                                                                                                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Restore to a moment, as a new database         | Pull request 28 (second attempt; the first was pull request 25)                                               | 38.4 minutes for the job; the copy took 35.6 of them | The copy `vd-test-db-restored` existed beside `vd-test-db`; nothing pointed at it                                                                                 |
+| Point the test server at the restored database | Pull request 30's run (second try; the first was pull request 29's run, which set the switch and then failed) | 4.7 minutes for the job (22:23:11 to 22:27:51)       | Succeeded at 22:27. The running server was given the copy's address; the change runner signed in to the copy in 3.5 seconds, the server in 0.5                    |
+| See the slice's page answer                    | The same run's smoke check and end-to-end tests, and one call by hand afterwards                              | Inside the same job                                  | All passed against the copy. `/v1/site-information` answered the same `installedAt`. The page was not opened in a browser by a person                             |
+| Switch back to the original database           | Pull request 31                                                                                               | 3.7 minutes for the job (22:32:27 to 22:36:10)       | Succeeded. The running server was given the first database's address again, and `/v1/site-information` answered the same `installedAt`                            |
+| Remove the restored copy                       | The pull request that carries this record                                                                     | Not known when this was written                      | Not known when this was written: this record is merged by the pull request whose run removes the copy. Owed: the result, added by the project's next pull request |
 
-| What                                          | Record |
-| --------------------------------------------- | ------ |
-| Date of the rehearsal                         |        |
-| Moment restored to                            |        |
-| `installedAt` shown before and after (equal?) |        |
-| Total time                                    |        |
+| What                                          | Record                                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Date of the rehearsal                         | 2026-11-27                                                                                                                                                                                       |
+| Moment restored to                            | 2026-11-27T19:30:00Z (the first attempt: 16:30:00Z)                                                                                                                                              |
+| `installedAt` shown before and after (equal?) | Equal: `2026-11-26T23:26:12.374Z` from the first database before, from the copy, and from the first database after                                                                               |
+| Total time                                    | Of the steps that worked, from starting the copy to the site answering from it: 43 minutes of pipeline time (38.4 and 4.7). By the clock, with two failures and their fixes: from 17:33 to 22:36 |
+
+What the 43 minutes mean: with the database damaged, and the two faults
+found here already fixed, the site would answer from a restored copy about
+43 minutes after the first pull request was merged, plus the time to write
+and merge two pull requests. The test database is almost empty; a database
+with real data may take longer to restore and to back up.
 
 ## First attempt, 2026-11-27: the copy was not made in time
 
