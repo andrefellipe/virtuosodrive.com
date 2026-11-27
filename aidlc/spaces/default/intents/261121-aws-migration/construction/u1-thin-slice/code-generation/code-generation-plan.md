@@ -2,15 +2,15 @@
 
 ## Summary
 
-- Builds: this round, only Step 17: the database takes its master password from the stored secret, so the two can no longer differ; plus three small corrections left by the last two reviews. Steps 1 to 16 are already built, reviewed and merged
-- Touches: this round, `infra/modules/database/main.tf`, the Terraform tests under `infra/environment/tests/`, `edge/src/gate.ts` and its test, and `code-summary.md`. The fix reaches AWS only through its own pull request and the pipeline; the existing test database is changed in place, not rebuilt
-- Tests: this round, one Terraform test that creates the secret and the database in two separate runs and checks they hold the same password; one changed assertion on the access gate's header; the existing 189 unit and integration tests and 8 Terraform tests run again
+- Builds: this round, only Step 18: the password page works when a person types the password into it. Its script and style are served as separate small files by the access gate; a failed script can no longer put the password in the address; the test environment's access password is replaced. Steps 1 to 17 are already built, reviewed and merged
+- Touches: this round, `edge/src/` (the gate, the password page, their tests), `scripts/src/build.ts` and its test, `infra/modules/edge/main.tf` if it fills in values the gate no longer needs, `infra/environment/test.tfvars`, `e2e/tests/`, `docs/operations.md` and `code-summary.md`
+- Tests: this round, an end-to-end test that types the password into the page as a person would and gets in; unit tests of the gate's two new files and of the page having no script or style written inside it; the existing unit, integration and Terraform tests run again
 
-Reopened three times on 2026-11-26: for Step 15, after the pull request's
-first infrastructure scan; for Step 16, after the pipeline's first run
-against AWS; and for Step 17, after its second. The maintainer asked that it
-be reopened for each pipeline fix until U1 is deployed. Steps 1 to 14 are as
-approved on 2026-11-25.
+Reopened four times on 2026-11-26: for Step 15, after the pull request's
+first infrastructure scan; for Steps 16 and 17, after the pipeline's first
+and second runs against AWS; and for Step 18, after the maintainer tried the
+deployed test site by hand. The maintainer asked that it be reopened for each
+fix until U1 is deployed. Steps 1 to 14 are as approved on 2026-11-25.
 
 ## What this plan is built from
 
@@ -97,6 +97,13 @@ as the Testing Contract below requires.
   - Add a Terraform test, with the stand-in provider, that would have caught this: it creates the secret in one run and the database in a later run of the same test, with the generating source giving a different value the second time, and asserts that the database's password equals the one in the secret. If the test tool cannot vary the generated value between runs, say so plainly in `code-summary.md` and assert at least that the database's password is read from the secret.
   - Three corrections left by the reviews of Steps 15 and 16, each small: (a) in `edge/src/gate.ts`, the access gate's own answers send the transport security header with `includeSubDomains`, as the edge's rules now do, with its unit test updated; (b) a comment on the settings group saying that changing its description or family replaces it, and that a replaced group takes effect at the database's next restart; (c) in `code-summary.md`, remove from "Not verified" the line asking whether Amazon RDS offers PostgreSQL 18, which is settled.
   - Then: `terraform fmt`, `terraform validate` and `terraform test` in both Terraform folders; `npm run check`; add a short section to `code-summary.md`; commit on the branch `u1-fix-master-password`, push, and open a pull request to `aws-migration` that names U1. Merging it starts the pipeline again: Terraform corrects the database's password, and the run carries on to the database changes.
+- [x] **Step 18: The password page must work for a person.** (US9.2) The pipeline's third run (2026-11-26) deployed U1 to the test environment: the smoke check, all 36 end-to-end runs and the speed measurement passed. The maintainer then opened the test site on a phone, typed the access password, and was shown the password page again. Cause, checked on 2026-11-26 by fetching the page: the access gate answers with a security policy that allows exactly the script and style written inside its page, but the edge's header rule for pages replaces that policy with the ordinary page's, which allows scripts and styles only as files from the site itself. The browser therefore blocks the page's script. With the script blocked, the browser submits the form the plain way, which reloads the page and writes what was typed into the address as a query. No end-to-end test caught it, because the tests get in by setting the access cookie and never type into the page. That the edge's header rule applies to the gate's own answers was listed as unverified in the code summary; it does.
+  - *The page's script and style become files.* The gate answers two fixed paths, one for the password page's script and one for its style, with the right content types, whether or not the request carries the access cookie; they contain nothing secret. The page refers to them and has no script or style written inside it. It then works under the policy the browser actually receives, and under the gate's own. The gate's own policy is changed to allow scripts and styles from the site itself, so that the two policies agree; the fingerprints the build used to compute for the old policy, and the places that fill them in, are removed. The gate must still fit the edge's size limit.
+  - *A failed script must never put the password in the address.* The form is changed so that a plain submission does not send what was typed as part of the address.
+  - *The missing test.* A new end-to-end test, in every engine and width the others run in: with no access cookie, open the site, see the password page, type the environment's access password, continue, and see the page's answered view; then check that the address carries no query, and that the browser reported no blocked script or style. A second test types a wrong password and is shown the password page again. Unit tests: the gate answers the two new paths without the cookie, with their content types; the page has no script or style inside it; a request for anything else without the cookie is still refused.
+  - *The test environment's access password is replaced*, because the plain submission wrote it into the address on the maintainer's phone, and so into that browser's history. In `infra/environment/test.tfvars`, set `access_password_version` to 2; the pipeline generates a new password and gives the gate its fingerprint in the same run, and the end-to-end tests read the new one. Production's has never been used and is not changed.
+  - In `docs/operations.md`, say how to read the access password, that it is typed once per device, and how it is replaced. In `code-summary.md`, add a short section and take the settled point out of "Not verified".
+  - Then: `terraform fmt`, `terraform validate` and `terraform test` in both Terraform folders; `npm run check`; commit on the branch `u1-fix-password-page`, push, and open a pull request to `aws-migration` that names U1.
 
 ## Story to step
 

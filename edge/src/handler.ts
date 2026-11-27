@@ -10,17 +10,15 @@ import type {
  * The edge function's entry. The build compiles this file to the JavaScript
  * the edge requires and adds the global "handler" the service calls.
  *
- * The four values below are placeholders in the built file. The build fills
- * in the two fingerprints of the password page; Terraform fills in the
- * SHA-256 of the environment's access password and the on/off flag when it
- * deploys the function. An unfilled placeholder can never be matched, so a
- * function deployed without its values refuses everything but the health check.
+ * The two values below are placeholders in the built file. Terraform fills
+ * in the SHA-256 of the environment's access password and the on/off flag
+ * when it deploys the function. An unfilled placeholder can never be
+ * matched, so a function deployed without its values lets through nothing
+ * but the health check.
  */
 const settings: GateSettings = {
   enabled: "__VD_GATE_ENABLED__",
   accessHash: "__VD_ACCESS_HASH__",
-  scriptHash: "__VD_SCRIPT_HASH__",
-  styleHash: "__VD_STYLE_HASH__",
 };
 
 /** The part of the edge runtime's "crypto" module the gate uses. */
@@ -56,7 +54,7 @@ export function createHandler(
           error: String(error),
         }),
       );
-      return refusal(settings);
+      return refusal();
     }
   };
 }

@@ -85,13 +85,15 @@ describe("the build of a Release", () => {
     );
     expect(built.split("__VD_ACCESS_HASH__")).toHaveLength(2);
     expect(built.split("__VD_GATE_ENABLED__")).toHaveLength(2);
-    expect(built).not.toMatch(/__VD_(SCRIPT|STYLE)_HASH__/);
+    // Those two are the only values left to fill in.
+    expect(built.match(/__VD_[A-Z_]+__/g)).toHaveLength(2);
 
     // Filled in as Terraform fills it in, then run with only what the edge provides.
-    const sha256 = (text: string, encoding: "hex" | "base64") =>
-      createHash("sha256").update(text).digest(encoding);
     const deployed = built
-      .replace("__VD_ACCESS_HASH__", sha256(PASSWORD, "hex"))
+      .replace(
+        "__VD_ACCESS_HASH__",
+        createHash("sha256").update(PASSWORD).digest("hex"),
+      )
       .replace("__VD_GATE_ENABLED__", "true");
     const logged: string[] = [];
     const edge = vm.createContext({
@@ -124,12 +126,30 @@ describe("the build of a Release", () => {
     expect(handler(event("/folders/abc", PASSWORD)).uri).toBe("/index.html");
     const refused = handler(event("/", "a-guess"));
     expect(refused.statusCode).toBe(401);
-    const script = /<script>([\s\S]*)<\/script>/.exec(
-      refused.body?.data ?? "",
-    )?.[1];
-    expect(refused.headers?.["content-security-policy"]?.value).toContain(
-      `'sha256-${sha256(script ?? "", "base64")}'`,
+    const policy = refused.headers?.["content-security-policy"]?.value ?? "";
+    expect(policy).toContain("script-src 'self'");
+    expect(policy).toContain("style-src 'self'");
+    expect(policy).not.toContain("sha256-");
+
+    // The password page refers to two files, and the built gate answers
+    // both without the cookie, each with the content type its kind needs.
+    const page = refused.body?.data ?? "";
+    const scriptPath = /<script src="([^"]+)" defer><\/script>/.exec(page)?.[1];
+    const stylePath = /<link rel="stylesheet" href="([^"]+)">/.exec(page)?.[1];
+    expect(page).not.toMatch(/<style\b|<script\b[^>]*>[^<]/);
+    const script = handler(event(scriptPath ?? "missing"));
+    const style = handler(event(stylePath ?? "missing"));
+    expect(script.statusCode).toBe(200);
+    expect(script.headers?.["content-type"]?.value).toBe(
+      "text/javascript; charset=utf-8",
     );
+    expect(script.body?.data).toContain("vd_access=");
+    expect(style.statusCode).toBe(200);
+    expect(style.headers?.["content-type"]?.value).toBe(
+      "text/css; charset=utf-8",
+    );
+    expect(style.body?.data).toContain("font-family");
+    // Only the refusal was logged.
     expect(logged).toHaveLength(1);
     expect(logged[0]).toContain('"operation":"access refused"');
   });

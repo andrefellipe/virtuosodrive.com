@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { equalInConstantTime, handleRequest } from "./gate.ts";
+import { equalInConstantTime, handleRequest, REFUSAL_POLICY } from "./gate.ts";
 import type {
   EdgeEvent,
   EdgeRequest,
@@ -8,7 +8,13 @@ import type {
   GateSettings,
 } from "./gate.ts";
 import { createHandler } from "./handler.ts";
-import { PAGE_SCRIPT, PAGE_STYLE, passwordPageHtml } from "./password-page.ts";
+import {
+  PAGE_SCRIPT,
+  PAGE_SCRIPT_PATH,
+  PAGE_STYLE,
+  PAGE_STYLE_PATH,
+  passwordPageHtml,
+} from "./password-page.ts";
 
 // Made up for the tests; not a password of any environment.
 const ACCESS_PASSWORD = "Example0Password0For0Tests0Only0";
@@ -18,8 +24,6 @@ const sha256 = (text: string, encoding: "hex" | "base64") =>
 const settings: GateSettings = {
   enabled: "true",
   accessHash: sha256(ACCESS_PASSWORD, "hex"),
-  scriptHash: sha256(PAGE_SCRIPT, "base64"),
-  styleHash: sha256(PAGE_STYLE, "base64"),
 };
 
 /** An event of the shape the edge hands a viewer-request function. */
@@ -94,6 +98,65 @@ describe("the access gate", () => {
         "max-age=31536000; includeSubDomains",
       );
       expect(response.body.data).toBe(passwordPageHtml());
+    }
+  });
+
+  it("answers the password page's script and style itself, without a cookie, with their exact content types, and logs nothing", () => {
+    const files = [
+      [PAGE_SCRIPT_PATH, "text/javascript; charset=utf-8", PAGE_SCRIPT],
+      [PAGE_STYLE_PATH, "text/css; charset=utf-8", PAGE_STYLE],
+    ] as const;
+    for (const [path, contentType, text] of files) {
+      // No cookie, a wrong one, the right one: the answer is the same.
+      for (const cookie of [undefined, "a-guess", ACCESS_PASSWORD]) {
+        const { result, lines } = run(path, cookie);
+
+        expect(isResponse(result)).toBe(true);
+        const response = result as EdgeResponse;
+        expect(response.statusCode).toBe(200);
+        expect(response.statusDescription).toBe("OK");
+        expect(response.headers).toEqual({
+          "content-type": { value: contentType },
+          "cache-control": { value: "no-store" },
+          "x-content-type-options": { value: "nosniff" },
+        });
+        expect(response.body).toEqual({ encoding: "text", data: text });
+        expect(lines).toEqual([]);
+      }
+    }
+  });
+
+  it("answers those two paths and no other without the cookie: a path that only resembles one is refused", () => {
+    expect(PAGE_SCRIPT_PATH).toBe("/access-password.js");
+    expect(PAGE_STYLE_PATH).toBe("/access-password.css");
+    for (const uri of [
+      `${PAGE_SCRIPT_PATH}.map`,
+      `/folder${PAGE_SCRIPT_PATH}`,
+      `/v1${PAGE_STYLE_PATH}`,
+      PAGE_STYLE_PATH.toUpperCase(),
+      `${PAGE_STYLE_PATH}/`,
+    ]) {
+      const { result, lines } = run(uri);
+
+      expect(isResponse(result) && result.statusCode).toBe(401);
+      expect(lines).toHaveLength(1);
+    }
+  });
+
+  it("holds neither the password nor its fingerprint in the two files or the page", () => {
+    for (const text of [PAGE_SCRIPT, PAGE_STYLE, passwordPageHtml()]) {
+      expect(text).not.toContain(ACCESS_PASSWORD);
+      expect(text).not.toContain(settings.accessHash);
+    }
+  });
+
+  it("passes the two paths on to the origin like any other file when the flag is off", () => {
+    for (const path of [PAGE_SCRIPT_PATH, PAGE_STYLE_PATH]) {
+      const { result, lines } = run(path, undefined, { enabled: "false" });
+
+      expect(isResponse(result)).toBe(false);
+      expect((result as EdgeRequest).uri).toBe(path);
+      expect(lines).toEqual([]);
     }
   });
 
@@ -192,11 +255,13 @@ describe("the access gate", () => {
     const malformed = handler({} as EdgeEvent);
     const withoutValues = handler(event("/", ACCESS_PASSWORD));
     const health = handler(event("/v1/health"));
+    const script = handler(event(PAGE_SCRIPT_PATH));
 
     expect(isResponse(malformed) && malformed.statusCode).toBe(401);
     // The built file's placeholders are not filled in here, so nothing matches.
     expect(isResponse(withoutValues) && withoutValues.statusCode).toBe(401);
     expect(isResponse(health)).toBe(false);
+    expect(isResponse(script) && script.body.data).toBe(PAGE_SCRIPT);
     expect(log).toHaveBeenCalledTimes(2);
   });
 });
@@ -204,30 +269,67 @@ describe("the access gate", () => {
 describe("the password page", () => {
   const html = passwordPageHtml();
 
-  it("is allowed by its own content security policy and by nothing wider", () => {
+  it("is refused with a policy that allows scripts and styles only as files from the site itself", () => {
     const { result } = run("/");
     const policy = (result as EdgeResponse).headers["content-security-policy"]
       ?.value;
 
-    expect(html).toContain(`<script>${PAGE_SCRIPT}</script>`);
-    expect(html).toContain(`<style>${PAGE_STYLE}</style>`);
+    expect(policy).toBe(REFUSAL_POLICY);
     expect(policy).toBe(
-      `default-src 'none'; script-src 'sha256-${sha256(PAGE_SCRIPT, "base64")}'; ` +
-        `style-src 'sha256-${sha256(PAGE_STYLE, "base64")}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      "default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     );
-    expect(html.match(/<script/g)).toHaveLength(1);
+    expect(policy).not.toMatch(/unsafe|sha256-|nonce-/);
+  });
+
+  it("has no script or style written inside it: it refers to the gate's two files, and so works under the edge's policy too", () => {
+    expect(html).toContain(`<link rel="stylesheet" href="${PAGE_STYLE_PATH}">`);
+    expect(html).toContain(`<script src="${PAGE_SCRIPT_PATH}" defer></script>`);
+    // One script element, and it is empty.
+    expect(html.match(/<script\b/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<script\b[^>]*>[^<]/);
+    expect(html).not.toMatch(/<style\b/);
+    // No style attribute and no event handler attribute on any element.
+    expect(html).not.toMatch(/<[^>]*\sstyle\s*=/i);
+    expect(html).not.toMatch(/<[^>]*\son[a-z]+\s*=/i);
+    expect(html).not.toMatch(/javascript:/i);
+  });
+
+  it("cannot put what was typed in the address, or send it, by a plain submission", () => {
+    // A form's default method writes its fields into the address as a query.
+    expect(html).toContain('<form id="access-form" method="post">');
+    expect(html).not.toMatch(/<form\b[^>]*\saction\s*=/);
+    // A field without a name is left out of whatever a form sends.
+    const field = /<input\b[^>]*>/.exec(html)?.[0] ?? "";
+    expect(field).not.toMatch(/\sname\s*=/);
+    expect(field).toContain('type="password"');
+    expect(field).toContain('autocomplete="current-password"');
+    expect(field).toContain('data-testid="access-password-input"');
+    expect(html).toContain(
+      '<button type="submit" data-testid="access-password-submit">',
+    );
   });
 
   it("is a few kilobytes with one field, and loads nothing from elsewhere", () => {
     expect(html.length).toBeLessThan(4_096);
     expect(html.match(/<input/g)).toHaveLength(1);
     expect(html).toContain('<label for="access-password">');
-    expect(html).not.toMatch(/https?:|src=|href=|@import|url\(/);
+    expect(html).not.toMatch(/https?:|\/\/|@import|url\(/);
+    const referred = [...html.matchAll(/(?:src|href)="([^"]*)"/g)].map(
+      (match) => match[1],
+    );
+    expect(referred.sort()).toEqual([PAGE_STYLE_PATH, PAGE_SCRIPT_PATH].sort());
+    expect(PAGE_STYLE).not.toMatch(/https?:|\/\/|@import|url\(/);
+    expect(PAGE_SCRIPT).not.toMatch(/https?:|\/\/|import|fetch|XMLHttp/);
   });
 
-  it("stores what was typed in the vd_access cookie for 30 days and reloads", () => {
+  it("stores what was typed in the vd_access cookie for 30 days and opens the same path again, without any query", () => {
     const submitted = (typed: string) => {
-      const page = { cookie: "", reloads: 0, submit: () => undefined as void };
+      const page = {
+        cookie: "",
+        opened: [] as string[],
+        prevented: 0,
+        submit: () => undefined as void,
+      };
       const document = {
         getElementById: (id: string) =>
           id === "access-form"
@@ -237,7 +339,7 @@ describe("the password page", () => {
                   listener: (e: object) => void,
                 ) => {
                   page.submit = () =>
-                    listener({ preventDefault: () => undefined });
+                    listener({ preventDefault: () => (page.prevented += 1) });
                 },
               }
             : { value: typed },
@@ -245,7 +347,12 @@ describe("the password page", () => {
           page.cookie = value;
         },
       };
-      const location = { reload: () => (page.reloads += 1) };
+      // An address that already carries a query, as the old page left it.
+      const location = {
+        pathname: "/folders/abc",
+        search: "?access-password=typed-before",
+        replace: (address: string) => page.opened.push(address),
+      };
       // The page's one script, run as the browser would run it.
       new Function("document", "location", PAGE_SCRIPT)(document, location);
       page.submit();
@@ -256,10 +363,13 @@ describe("the password page", () => {
     expect(right.cookie).toBe(
       `vd_access=${ACCESS_PASSWORD}; Max-Age=2592000; Path=/; Secure; SameSite=Strict`,
     );
-    expect(right.reloads).toBe(1);
+    // The plain submission is always stopped; the path is opened once, bare.
+    expect(right.prevented).toBe(1);
+    expect(right.opened).toEqual(["/folders/abc"]);
 
     const unusable = submitted("abc; Domain=example.com");
     expect(unusable.cookie).toBe("");
-    expect(unusable.reloads).toBe(1);
+    expect(unusable.prevented).toBe(1);
+    expect(unusable.opened).toEqual(["/folders/abc"]);
   });
 });

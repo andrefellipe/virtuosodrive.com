@@ -17,14 +17,24 @@ export const expectedVersion = (): string | undefined =>
     ? undefined
     : process.env.VD_EXPECTED_VERSION;
 
+/** The environment's access password, for the tests that type it as a person would. */
+export const accessPassword = (): string => required("VD_ACCESS_PASSWORD");
+
 export const SITE_INFORMATION = "**/v1/site-information";
+
+/** The cookie the password page stores what was typed in. */
+export const ACCESS_COOKIE = "vd_access";
+
+/** Where the access gate answers the password page's script and style. */
+export const PASSWORD_PAGE_SCRIPT = "/access-password.js";
+export const PASSWORD_PAGE_STYLE = "/access-password.css";
 
 /** Gives the browser the access password, as a device that was given it has it. */
 export async function giveAccess(context: BrowserContext): Promise<void> {
   await context.addCookies([
     {
-      name: "vd_access",
-      value: required("VD_ACCESS_PASSWORD"),
+      name: ACCESS_COOKIE,
+      value: accessPassword(),
       url: baseUrl(),
       secure: true,
       sameSite: "Strict",

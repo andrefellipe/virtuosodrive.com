@@ -7,17 +7,17 @@ instead of in chat, write your answer after `[Answer]:` and tell me in chat when
 
 Approve the code plan for u1-thin-slice?
 
-- Builds: this round, only Step 17: the database takes its master password from the stored secret, so the two can no longer differ; plus three small corrections left by the last two reviews. Steps 1 ...
-- Touches: this round, `infra/modules/database/main.tf`, the Terraform tests under `infra/environment/tests/`, `edge/src/gate.ts` and its test, and `code-summary.md`. The fix reaches AWS only through...
-- Tests: this round, one Terraform test that creates the secret and the database in two separate runs and checks they hold the same password; one changed assertion on the access gate's header; the ex...
-- Reopened three times on 2026-11-26: for Step 15, after the pull request's
-- first infrastructure scan; for Step 16, after the pipeline's first run
+- Builds: this round, only Step 18: the password page works when a person types the password into it. Its script and style are served as separate small files by the access gate; a failed script can n...
+- Touches: this round, `edge/src/` (the gate, the password page, their tests), `scripts/src/build.ts` and its test, `infra/modules/edge/main.tf` if it fills in values the gate no longer needs, `infra...
+- Tests: this round, an end-to-end test that types the password into the page as a person would and gets in; unit tests of the gate's two new files and of the page having no script or style written i...
+- Reopened four times on 2026-11-26: for Step 15, after the pull request's
+- first infrastructure scan; for Steps 16 and 17, after the pipeline's first
 
 Full plan: aidlc/spaces/default/intents/261121-aws-migration/construction/u1-thin-slice/code-generation/code-generation-plan.md
 Test instructions: aidlc/spaces/default/intents/261121-aws-migration/construction/u1-thin-slice/code-generation/unit-test-instructions.md
 
-[Approval Fingerprint]: sha256:v3:3e07ea6f08480797d4b0e919e61077acd11d0740818d26f2f1ca505faac6c332
-[Planned Source]: 8fdd1dfecfaf8433a6ef4457bfb73db4dae05cd14df1b92cdeddacde46907fc6
+[Approval Fingerprint]: sha256:v3:87303282eb2099872f0e8a188dd3f910e0f7fa716124b39a7094cb05b0ec8f75
+[Planned Source]: 35245f286b5ff3185cb68f2abd511fd0082faf404918ab0270190f7b367cf014
 
 - A. Approve Plan
 - B. Request Changes

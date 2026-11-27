@@ -274,11 +274,93 @@ header is one more assertion in an existing test. Not run for this fix:
 Checkov, which is not installed on this machine and runs on the pull request;
 the end-to-end tests; and anything against AWS.
 
+## Corrected after the maintainer tried the test site
+
+The pipeline's third run, on 2026-11-26, deployed U1 to the test environment:
+the smoke check, all 36 end-to-end runs and the speed measurement passed. The
+maintainer then opened the test site on a phone, typed the access password,
+and was shown the password page again.
+
+**What failed, and why.** The access gate answered with a security policy
+that allowed exactly the script and the style written inside its password
+page. The edge's header rule for pages (`aws_cloudfront_response_headers_policy.pages`,
+whose policy has `override = true`) applies to the gate's own answers too,
+and replaced that policy with the ordinary page's, which allows scripts and
+styles only as files from the site itself. The browser therefore blocked the
+page's script. With the script blocked, the browser submitted the form the
+plain way, which reloaded the page and wrote what was typed into the address
+as a query. No end-to-end test caught it, because every test got in by
+setting the access cookie and none typed into the page.
+
+**What was changed.**
+
+- **The page's script and style are files.** The gate answers two fixed paths itself, `/access-password.js` and `/access-password.css`, with status 200, the content types `text/javascript; charset=utf-8` and `text/css; charset=utf-8`, and `cache-control: no-store`. It answers them before it looks at the cookie, so with or without one, and writes no "access refused" line for them. They hold nothing secret. With the gate's flag off they are passed on to the origin like any other path, because the password page is not shown then. The names cannot be a file of the page's build (`/index.html` and under `/r/<version>/`) or a path of the server's (under `/v1`). (`edge/src/gate.ts`, `edge/src/password-page.ts`)
+- **The page has no script or style inside it.** It refers to the two files, and has no style attribute and no event handler attribute. It works under the policy the browser actually receives and under the gate's own.
+- **The gate's own policy** is now `default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, so that the two policies agree on scripts and styles.
+- **The fingerprints are gone.** `scriptHash` and `styleHash` are removed from the gate's settings, their two placeholders from `edge/src/handler.ts`, and the hashing from `scripts/src/build.ts`, which no longer reads the password page's source (`scripts/tsconfig.json` no longer includes it). The built file has two placeholders, both filled in by Terraform, as before; nothing in `infra/` referred to the fingerprints.
+- **A plain submission cannot carry the password.** The form's method is `post`, so nothing is written into the address. The field has no `name`, so a plain submission sends nothing of it at all: what was typed leaves the field only through the script. A sentence for browsers without JavaScript is added.
+- **The script opens the address's own path again** in place of the current entry of the browser's history (`location.replace(location.pathname)`), where it used to reload. An address that carried a query, such as the one the old page left, is opened without it.
+- **The test environment's access password is replaced.** `infra/environment/test.tfvars` sets `access_password_version = 2`. The pipeline generates a new password and gives the gate its SHA-256 in the same run; the end-to-end tests read the new one. Production's has never been used and `production.tfvars` is unchanged.
+- `docs/operations.md`, procedure 5, now says how to read the access password, that it is typed once per device and remembered 30 days, and how it is replaced.
+
+**How a person without a working script is treated.** Tried on 2026-11-26 in
+Google Chrome on this machine, against the built gate behind a small local
+stand-in for the edge (see below): with the script's file blocked and the
+edge's policy, pressing Continue sends a `POST` with an empty body to the
+same address, the address gains no query, no cookie is set, and the password
+page is shown again. With the gate's own policy the browser refuses to send
+the form at all (`form-action 'none'`) and the page stays as it is. In
+neither case does the password leave the field.
+
+**Tests.**
+
+- `edge/src/gate.test.ts`, 20 tests where there were 14. New: the two paths are answered without a cookie, with a wrong one and with the right one, with their exact headers and bodies, and nothing is logged; paths that only resemble them are refused with 401 and logged; neither file nor the page holds the password or its SHA-256; with the flag off the two paths are passed on; the refusal's exact policy; the page has one empty script element, no style element, no style attribute and no event handler attribute; the form's method is `post` and the field has no name. The existing test of the script now runs it with an address that carries a query and checks that the bare path is opened.
+- `scripts/src/commands.test.ts`: the test that runs the built gate in a sandbox now also asks it for the two paths the built page refers to, and checks that the built file has exactly two placeholders left.
+- `e2e/tests/thin-slice.spec.ts`, 8 tests where there were 6 (48 runs where there were 36), written and not run. New: with no cookie, open the site, see the password page with 401, type the environment's access password, press Continue, see the answered view; the address has no query; the browser reported no blocked script or style and no error (collected from before the page first opens, across the reload); the cookie `vd_access` exists with `secure` and `sameSite` "Strict". And: a wrong, made-up password shows the password page again with 401, with no query in the address. The existing test of what is refused without the cookie now also asks for the two paths and checks status 200, the exact content types, and that they hold neither the password nor its SHA-256.
+
+**Tried in a real browser, locally.** Because the fault was one no unit test
+could show, the built gate (`dist/edge/access-gate.js`, filled in with a
+made-up password's SHA-256) was put behind a small local server that does
+what the edge does to its answers: replace the security policy with the
+edge's and add `nosniff`. Google Chrome, driven by Playwright with a one-off
+command and no file left behind, then typed into the page. With the edge's
+policy and with the gate's own: the style applied, the script ran, the cookie
+was set with `Secure`, `SameSite=Strict` and `Path=/`, the address ended
+without a query, the request was let through, and the console reported
+nothing about the security policy. A wrong password showed the password page
+again. This is one engine on one machine and not the real edge; the pipeline's
+end-to-end run is the proof.
+
+Run on 2026-11-26 and 2026-11-27, before commit:
+
+| Command | Result |
+|---------|--------|
+| `npx vitest run edge scripts`, before any change | 6 files, 59 tests passed |
+| `terraform fmt -check -recursive infra` | Clean, exit 0 |
+| `terraform -chdir=infra/environment validate` | Valid, exit 0 |
+| `terraform -chdir=infra/setup validate` | Valid, exit 0 |
+| `terraform -chdir=infra/environment test` | 8 runs passed, 0 failed, exit 0 |
+| `terraform -chdir=infra/setup test` | 3 runs passed, 0 failed, exit 0 |
+| `npm run check` | Exit 0: format, lint, type check, 195 tests passed in 26 files with coverage (lines 91.68%, 761 of 830), build, repository checks (781 files) |
+| `npx playwright test --config e2e/playwright.config.ts --list` | 48 tests in 1 file listed, exit 0; none run |
+
+The built gate is 6,377 bytes against the limit of 10,240 (5,808 before). The
+page is 75,322 bytes compressed.
+
+**Different from the plan's wording, or beyond it.**
+
+- The field's `name` is removed, which the plan does not ask for; it asks only that a plain submission not put what was typed in the address. Password managers find a password field by its type and its `autocomplete`, both kept, but this was not tried with one.
+- `unit-test-instructions.md` is part of the approved plan and still says 12 tests for the gate and 6 end-to-end tests; there are now 20 and 8.
+- The first password is replaced, but the old one stays in the history of the browser it was typed in until that entry is cleared. It no longer opens anything once this is deployed.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.
-- Whether the CloudFront Functions runtime accepts the built gate; it ran only in a Node sandbox.
-- Whether response headers policies apply to the gate's own 401 answer. The gate sets its headers itself.
+- Whether the CloudFront Functions runtime accepts the built gate as changed here; it ran only in a Node sandbox. The gate before this change does run there.
+- The two new end-to-end tests, and the extended one, have not run. Until the pipeline runs them, that the password page works at the real edge, in the three engines, is unproven.
+- How the real edge treats the gate's two files: whether it passes their content types and `cache-control` on unchanged, and whether it compresses them. The page's header rule also adds its security policy to them, which is harmless for a script and a style.
+- What a person sees after a plain `POST` at the real edge (the script blocked, or JavaScript off). The page's files accept only `GET` and `HEAD`, so the edge may answer its own "method not allowed" page before the gate runs, where the local stand-in showed the password page again. Either way nothing typed is sent.
+- The password page with a password manager, now that the field has no `name`.
 - The gate's log group name.
 - Whether a budget and the cost-allocation tag can be set up by the script without a console step.
 - The `environment:` expression in `go-back.yml` and `compare.yml`, which relies on an empty name meaning no environment.

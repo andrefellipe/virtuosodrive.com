@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -12,7 +11,6 @@ import { join } from "node:path";
 import { build as esbuild } from "esbuild";
 import type { BuildOptions } from "esbuild";
 import { build as viteBuild } from "vite";
-import { PAGE_SCRIPT, PAGE_STYLE } from "../../edge/src/password-page.ts";
 import { readFolder, ROOT } from "./files.ts";
 import { measurePage, PAGE_BUDGET_BYTES } from "./page-size.ts";
 
@@ -149,11 +147,7 @@ async function buildAccessGate(
     logLevel: "warning",
   });
 
-  const fingerprint = (text: string): string =>
-    createHash("sha256").update(text).digest("base64");
-  const built = readFileSync(outfile, "utf8")
-    .replace("__VD_SCRIPT_HASH__", fingerprint(PAGE_SCRIPT))
-    .replace("__VD_STYLE_HASH__", fingerprint(PAGE_STYLE));
+  const built = readFileSync(outfile, "utf8");
   for (const placeholder of ["__VD_ACCESS_HASH__", "__VD_GATE_ENABLED__"]) {
     if (built.split(placeholder).length !== 2) {
       throw new Error(
@@ -161,7 +155,6 @@ async function buildAccessGate(
       );
     }
   }
-  writeFileSync(outfile, built);
 
   const bytes = Buffer.byteLength(built);
   log(`access gate: ${bytes} bytes (limit ${EDGE_FUNCTION_LIMIT_BYTES})`);
