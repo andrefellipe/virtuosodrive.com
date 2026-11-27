@@ -21,9 +21,10 @@ deletion_protection = false
 # moment exists beside the first while this line is here.
 restored_copy_time = "2026-11-27T19:30:00Z"
 
-# 2026-11-27: the same rehearsal, steps 4 to 8. While this is true, the server
-# and the change runner in test use the copy, not the first database.
-use_restored_copy = true
+# 2026-11-27: the same rehearsal, step 9. Test answered from the copy from
+# 22:24 UTC; with this back to false it answers from the first database again.
+# The copy is removed by a later pull request, never by this one.
+use_restored_copy = false
 
 # Replaced on 2026-11-26: the first password page wrote what was typed into the address, and so into one browser's history.
 access_password_version = 2
