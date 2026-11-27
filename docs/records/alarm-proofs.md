@@ -12,22 +12,25 @@ written here; the times are enough.
 
 ## Error rate
 
-| What                                                          | Record                                                                           |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Requests made to the deliberately failing operation, and when | 25, all failing, within one 5-minute period, shortly before 05:18                |
-| Time the alarm email arrived                                  | 05:18                                                                            |
-| Time the cleared email arrived                                | 05:22                                                                            |
-| The email named the environment and the saved search (yes/no) | Not written down on the day. Owed: to be read from the email the maintainer kept |
-| No email with fewer than 20 requests in the period (checked?) | Yes. 10 failing requests in a period with no other traffic raised no alarm       |
+| What                                                          | Record                                                                                              |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Requests made to the deliberately failing operation, and when | 25, all failing, at 05:16 and 05:17 (14 and 11, counted in the server's log)                        |
+| Time the alarm email arrived                                  | The alarm was raised at 05:18:24 (AWS's alarm history). When the email arrived was not written down |
+| Time the cleared email arrived                                | The alarm cleared at 05:22:24 (AWS's alarm history). When the email arrived was not written down    |
+| The email named the environment and the saved search (yes/no) | Not written down on the day. Owed: to be read from the email the maintainer kept                    |
+| No email with fewer than 20 requests in the period (checked?) | Yes. 10 failing requests at 05:26, with no other traffic in the period, raised no alarm             |
 
 ## Health
 
-| What                                | Record |
-| ----------------------------------- | ------ |
-| Time the test database was stopped  | 05:39  |
-| Time the alarm email arrived        | 05:43  |
-| Time the database was started again | 12:23  |
-| Time the cleared email arrived      | 12:30  |
+| What                                | Record                                                                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Time the test database was stopped  | The stop was asked for at 05:39:02 (AWS's record of the call); AWS reported the database stopped at 05:45:25                      |
+| Time the alarm email arrived        | The alarm was raised at 05:43:09 (AWS's alarm history), before the stop had finished. When the email arrived was not written down |
+| Time the database was started again | The start was asked for at 12:23:02                                                                                               |
+| Time the cleared email arrived      | The alarm cleared at 12:30:09 (AWS's alarm history). When the email arrived was not written down                                  |
+
+That the emails did arrive is the maintainer's word on the day; their times
+of arrival are in no source that was kept.
 
 The database was meant to be stopped for a few minutes. It stayed stopped
 for almost seven hours because the maintainer's connection dropped before it
