@@ -798,22 +798,42 @@ All in the test environment. Each record is in `docs/records/`.
 | The alarms | Done: the error-rate alarm raised and cleared, nothing below 20 requests, the health alarm raised and cleared | `alarm-proofs.md` |
 | The pipeline's identities | Done: `prove-identity-limits` run twice, all three attempts refused both times, the second time by explicit deny; pull request 26, never merged, was refused both identities | `alarm-proofs.md` |
 | A failing deployment | Done: `notPutInPlace`, test kept its Release, the next deployment succeeded | `failing-deployment.md` |
-| Restoring the database | Done to the point of removing the copy, which the pull request carrying this text does. Two steps failed at their first try and were fixed (Steps 23 and 24) | `restore.md` |
+| Restoring the database | Done, the copy removed (pull request 32: deleted at 22:45:53 UTC). Two steps failed at their first try and were fixed (Steps 23 and 24); the server's first call to the copy failed and nothing was changed for it | `restore.md` |
 | The speeds | Three of seven rows; the others are marked as owed | `measured-speeds.md` |
 
 What the run of pull request 30 showed, which Step 24's section could not
-know: the change runner signed in to the copy in 3.5 seconds and the server
-in 0.5, so neither the 30 seconds nor the second try was exercised; the
-smoke check, the end-to-end tests and the measurement passed against the
-copy; `/v1/site-information` answered the same `installedAt` from the copy
-and, after pull request 31, from the first database again.
+know: the change runner signed in to the copy in 3.5 seconds, so neither the
+30 seconds nor the second try was exercised. The server's first call to the
+copy failed: its health check answered 503 after 2.3 seconds, and the smoke
+check passed at its second attempt. The end-to-end tests and the
+measurement then passed against the copy; `/v1/site-information` answered
+the same `installedAt` from the copy and, after pull request 31, from the
+first database again.
 
-**Owed after this pull request.**
+**Corrected on 2026-11-27 after the review of the records** (review 12,
+NOT-READY, asked for by the maintainer). The first version of the records
+and of this section left out the server's failed first call to the copy, and
+gave the wrong limit for the 500 of 18:05 UTC. The limit that ended that
+call is the 2 seconds the server allows for opening a connection
+(`CONNECT_LIMIT_MS` in `server/src/db/deadline.ts`), inside its 3 seconds
+for the whole request. Step 24 of the plan and its section above say "3
+seconds" of the same event; the plan is an approved document and was not
+edited, so read those lines with this correction. Also corrected: the alarm
+times are the times AWS changed the alarm's state, not the times emails
+arrived; 33.4 and 6.6 minutes where 33.5 and 6.5 were written (above, under
+Step 23, the older figures stand as first written); the page's size as the
+pipeline printed it; the slow sign-ins after the database's own restart,
+which the first version left out; and what the "43 minutes" of the restore
+leave out.
 
-- The result of removing the copy, to be added to `restore.md` by the project's next pull request.
-- The first call after 30 minutes of quiet (NFR9.2), measured by the conductor, with the question it raises: on 2026-11-27 one call after an hour of quiet answered 500, because the server's sign-in to the database took 4.1 seconds against the 3 it allows. Figures first, then a proposal to the maintainer.
-- By the maintainer: the page's first load on a throttled connection, ten calls from a connection in Brazil, the page in Edge and in each browser's previous version; whether the alarm email named the environment and the saved search.
+**Owed.**
+
+- The first call after 30 minutes of quiet (NFR9.2), measured by the conductor, with the question it raises: the server allows 2 seconds for opening a connection, and a first sign-in after quiet took up to 4.1 seconds, after the database's restart 10 to 45, and to a new copy long enough to fail the first health check. Figures first, then a proposal to the maintainer.
+- By the maintainer: the page's first load on a throttled connection, ten calls from a connection in Brazil, the page in Edge and in each browser's previous version; whether the alarm email named the environment and the saved search; whether GitHub's email about the failed run of pull request 23 arrived.
 - The server's own `Duration` from the dashboard; the cost-reporting tag; the budget's first figure (January 2027).
+- Never shown, and not owed by a rehearsal in test: the failed-deployment email, which only production's job sends, and the budget's own email.
+- Not done by a person: opening the page in a browser while it answered from the copy, and after going back.
+- The log of the first `prove-identity-limits` run, linked from `alarm-proofs.md`, is public and predates Step 21, so it shows the account's number. Deleting older runs is the maintainer's decision (Step 21).
 
 ## Not verified
 

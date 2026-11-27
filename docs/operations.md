@@ -245,13 +245,15 @@ whole time.
    The first sign-in to a copy is slow. A database that has never been
    signed in to by AWS identity takes a long time over its first check of
    one: 19 seconds when measured on 2026-11-27, where a sign-in to the first
-   database takes under half a second. The change runner waits for it: it
-   gives a sign-in 30 seconds, and if a try fails for any reason other than
-   the database refusing the sign-in, it writes one line to its log and
-   tries once more. The server is not as patient: it gives the database 3
-   seconds in a request, so its own first call to the copy may fail. The
-   deployment's smoke check tries five times, which is expected to cover
-   that.
+   database usually takes under half a second. The change runner waits for
+   it: it gives a sign-in 30 seconds, and if a try fails for any reason
+   other than the database refusing the sign-in, it writes one line to its
+   log and tries once more. The server is not as patient: opening a
+   connection may take 2 of the 3 seconds it gives the database in a
+   request, so its own first call to the copy may fail. It did on
+   2026-11-27: the first health check answered 503 after 2.3 seconds, and
+   the deployment's smoke check, which tries five times, passed at its
+   second attempt. For those seconds the site answers with an error.
 
 **Confirm.**
 
