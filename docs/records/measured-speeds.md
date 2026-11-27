@@ -24,3 +24,20 @@ each browser.
 ## Notes
 
 What was unexpected, and what was changed because of it.
+
+- **2026-11-27, the measurement tripped the test environment's request
+  limit.** The deployment of pull request 21 put Release `9a4fc16` in place
+  in test and passed the smoke check and the end-to-end tests; the
+  measurement then failed with 9 of 100 calls failed. The API's access log
+  showed those 9 answered 429 by the test environment's own limit (10
+  requests a second sustained, 20 in a burst). The measurement sent its calls
+  one after another with no pause: at the 126 to 212 ms a call took in
+  earlier runs that stayed under 10 a second by chance, and in this run a
+  call took 29 ms, about 34 a second. The fault was the measurement's, not
+  the server's or the limit's. Changed (Unit U1, Step 22): the measurement
+  now starts a call no sooner than 125 ms after the previous one started (8
+  a second), warm-up calls included; each call's time is still taken from
+  its own start, so the pause is not in the figures; a 429 still counts as a
+  failure and is reported as such. Neither environment's limit was changed.
+  The row above was measured before this change, unpaced; pacing does not
+  change what a single call's time means.

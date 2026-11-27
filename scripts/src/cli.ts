@@ -5,7 +5,8 @@ import { runSmokeCheck } from "./smoke-check.ts";
  * The command line for the pipeline's checks of a deployed environment.
  *
  *   node scripts/src/cli.ts smoke      the smoke check
- *   node scripts/src/cli.ts measure    the 100-call measurement
+ *   node scripts/src/cli.ts measure    the 100-call measurement, at most
+ *                                      8 calls a second (about 15 seconds)
  *
  * Both read:
  *   VD_BASE_URL          the environment's address, with https://
@@ -72,12 +73,20 @@ async function measureCalls(
     accessPassword: required(settings, "VD_ACCESS_PASSWORD"),
     fetch: tools.fetch,
     now: tools.now,
+    wait: tools.wait,
   });
   tools.out(
     `Site information, ${result.calls} calls: middle ${Math.round(result.p50Ms)} ms, ` +
       `95th of 100 ${Math.round(result.p95Ms)} ms, slowest ${Math.round(result.maxMs)} ms, ` +
       `${result.failures} failed. Target: 95th of 100 at most ${result.targetMs} ms.`,
   );
+  if (result.refused > 0) {
+    tools.err(
+      `${result.refused} of the failed calls were answered 429, refused by the environment's request limit. ` +
+        "The measurement starts at most 8 calls a second to stay under that limit, " +
+        "so either something else was calling at the same time or the limit is lower than the measurement assumes.",
+    );
+  }
   if (!result.passed) {
     tools.err("The measurement is over the target.");
   }

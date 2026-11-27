@@ -67,6 +67,16 @@ Steps:
    environment with you as required reviewer, and protects the branch. If
    GitHub's plan for the repository does not allow a required reviewer or
    branch protection, the script stops and says so.
+
+   Before it changes anything on GitHub, the script checks that you are
+   signed in to GitHub and to AWS, and reads from Terraform every value it
+   is going to store. If the AWS sign-in is missing or has expired, or any
+   value cannot be read or is empty, it stops, says which, and has stored
+   nothing: sign in again and run it again. (Run with an expired AWS sign-in
+   on 2026-11-27, the earlier script stored one secret with an empty value.
+   The pipeline kept working, because the workflows then still read the
+   variable of the same name, and a second run put it right.)
+
 4. Merge the first pull request. The pipeline builds both environments.
 
 **Once, after the change that made those four names secrets is merged**
@@ -142,7 +152,11 @@ What can go wrong:
 
 1. A merged pull request starts the workflow `deliver`. It builds the Release,
    deploys it to test, and runs the smoke check, the end-to-end tests and the
-   100-call measurement there.
+   100-call measurement there. The measurement starts at most 8 calls a
+   second, to stay under the test environment's own request limit of 10 a
+   second, so it takes about 15 seconds. If it reports calls answered 429,
+   something else was calling the test site at the same time, or the limit
+   was lowered: it is not a fault of the server.
 2. When those pass, the run waits at the job `Production`. GitHub emails you.
 3. Read the test stage's Terraform plan in the run. Production's plan can only
    be made after you approve, with production's identity.
@@ -207,9 +221,11 @@ whole time.
    is pointed at the copy yet, and the site answers from the first database
    throughout.
 
-   Terraform waits at most 40 minutes for the restore, so that a slow one
-   ends the run cleanly inside the job's 60 minutes. If it gives up, see
-   "When the restore takes too long" below.
+   Terraform waits at most 30 minutes for the restore, so that a slow one
+   ends the run cleanly well inside the job's 60 minutes, and one that
+   finishes at the last moment still leaves the rest of the deployment
+   about half the job. If it gives up, see "When the restore takes too
+   long" below.
 
 **Point the site at it.**
 
@@ -230,10 +246,19 @@ whole time.
 
 8. `/v1/site-information` answers the same `installedAt` as before, because
    the copy holds the same row. The server answers only with the access
-   cookie. This command reads the password from AWS inside itself, so the
-   password is neither shown in the terminal nor kept in the shell's history:
+   cookie. This command reads the password from AWS and hands it to `curl`
+   on standard input, as a header:
 
-   `curl -sS --cookie "vd_access=$(aws ssm get-parameter --name vd-test-access-password --with-decryption --query Parameter.Value --output text)" https://test.virtuoso.andrefellipelabs.com/v1/site-information`
+   `aws ssm get-parameter --name vd-test-access-password --with-decryption --query Parameter.Value --output text | sed 's/^/Cookie: vd_access=/' | curl -sS --header @- https://test.virtuoso.andrefellipelabs.com/v1/site-information`
+
+   Written this way the password is not shown in the terminal, is not kept
+   in the shell's history, and is not an argument of any program: it
+   travels only between the three programs, so it does not appear in the
+   machine's list of running commands, where other users of the machine
+   could read it. (`--header @-` makes `curl` read its extra headers from
+   standard input, one a line. Do not rewrite the command with
+   `--cookie "vd_access=..."` or `--header "Cookie: ..."`: either puts the
+   password on `curl`'s command line for as long as it runs.)
 
    Run it before step 4 as well, and compare the two answers.
 
@@ -283,7 +308,7 @@ and even when nothing is pointed at it, the removal and the restore
 together may outlast the job. Change the moment as steps 9 and 10, then
 steps 1 to 3 with the new moment.
 
-**When the restore takes too long.** If AWS has not finished after 40
+**When the restore takes too long.** If AWS has not finished after 30
 minutes, Terraform stops waiting and the run fails, with the Deployment
 recorded as `notPutInPlace`. The site is not affected: nothing was pointed
 at the copy. What is left: the copy, which AWS goes on creating; Terraform's

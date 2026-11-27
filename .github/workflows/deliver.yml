@@ -130,6 +130,8 @@ jobs:
           VD_EXPECTED_VERSION: ${{ env.VERSION }}
         run: VD_BASE_URL="${SITE_URL}" npm run e2e
 
+      # Paced by the script itself at 8 calls a second at most, under this
+      # environment's request limit of 10 a second; about 15 seconds.
       - name: The 100-call measurement (95 of 100 within 1 second)
         env:
           VD_ENVIRONMENT: test

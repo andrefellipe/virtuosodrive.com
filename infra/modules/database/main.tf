@@ -272,17 +272,29 @@ resource "aws_db_instance" "restored" {
   # (.github/workflows/deliver.yml). A run stopped by GitHub in the middle of
   # an apply leaves Terraform's lock in place and may leave its record
   # without the copy. A wait that ends by itself does neither: Terraform
-  # records what it started, releases its lock and fails the run. About 5
-  # minutes of the job pass before the apply begins, so a restore that has
-  # not finished after 40 minutes fails at about minute 45, well inside the
-  # 60. A restore usually takes 10 to 25 minutes. Removing the copy is a run
-  # of its own and usually takes under 10 minutes.
+  # records what it started, releases its lock and fails the run.
+  #
+  # Why 30 minutes for the restore. The limit has to leave room on both
+  # sides, for a restore that fails and for one that succeeds at the last
+  # moment. In the two runs of 2026-11-27 the apply began 1 to 2 minutes into
+  # the job, and everything after it (the rest of the deployment, installing
+  # the browsers, the end-to-end tests, the measurement) took about 4
+  # minutes. At worst that remainder is about 12: the change runner alone
+  # may take 5.5, and each smoke check retries. So a restore given up on
+  # fails the run by about minute 32, and one that finishes just inside the
+  # limit still leaves the job about 28 minutes for a remainder of 4 to 12.
+  # With the earlier 40 minutes that margin was 18, too close to the
+  # remainder's worst case for a stop that can fall in the middle of the
+  # switch step. The job's AWS sign-in also lasts one hour from its first
+  # minute. A restore usually takes 10 to 25 minutes, so 30 is not expected
+  # to cut a healthy one short. Removing the copy is a run of its own and
+  # usually takes under 10 minutes.
   #
   # Changing the moment replaces the copy: a removal and a restore in one
-  # run, which together may wait up to 70 minutes. Procedure 4 of
+  # run, which together may wait up to 60 minutes. Procedure 4 of
   # docs/operations.md therefore changes the moment in two pull requests.
   timeouts {
-    create = "40m"
+    create = "30m"
     delete = "30m"
   }
 
@@ -333,13 +345,13 @@ output "sign_in_resource_ids" {
 }
 
 output "restored_copy" {
-  description = "What a test needs to read about the restored copy; null when there is none. Only tests read it. The two values read from inside the copy's restore block are guarded: should AWS ever report that block differently from how it was written, they are null and not an error that stops a deployment. The guard is on those two values and not on the whole output, because a guard around the whole would hide every value from a test while Terraform is only planning."
+  description = "What a test needs to read about the restored copy; null when there is none. Only tests read it. The four values read from inside the copy's restore block and its time limits are guarded: should Terraform's record ever hold either differently from how it was written (a copy recorded without time limits, for one), they are null and not an error that stops a deployment. The guard is on those four values and not on the whole output, because a guard around the whole would hide every value from a test while Terraform is only planning."
   value = one([for copy in aws_db_instance.restored : {
     identifier                          = copy.identifier
     source_db_instance_identifier       = try(one(copy.restore_to_point_in_time).source_db_instance_identifier, null)
     restore_time                        = try(one(copy.restore_to_point_in_time).restore_time, null)
-    create_timeout                      = copy.timeouts.create
-    delete_timeout                      = copy.timeouts.delete
+    create_timeout                      = try(copy.timeouts.create, null)
+    delete_timeout                      = try(copy.timeouts.delete, null)
     address                             = copy.address
     storage_encrypted                   = copy.storage_encrypted
     iam_database_authentication_enabled = copy.iam_database_authentication_enabled

@@ -254,6 +254,21 @@ describe("the command line of the deployed checks", () => {
     const failing = tools(brokenSite);
     expect(await runCommand("measure", settings, failing.given)).toBe(1);
     expect(failing.err).toContain("The measurement is over the target.");
+    // Those failures were not refusals by the request limit, and are not called that.
+    expect(failing.err.join("\n")).not.toContain("429");
+  });
+
+  it("measure: says so when calls were refused by the request limit, and exits 1", async () => {
+    const refusingSite = (() =>
+      Promise.resolve(new Response("{}", { status: 429 }))) as typeof fetch;
+    const refused = tools(refusingSite);
+
+    expect(await runCommand("measure", settings, refused.given)).toBe(1);
+    expect(refused.err[0]).toMatch(
+      /^100 of the failed calls were answered 429, refused by the environment's request limit\./,
+    );
+    expect(refused.err).toContain("The measurement is over the target.");
+    expect([...refused.out, ...refused.err].join("\n")).not.toContain(PASSWORD);
   });
 
   it("exits 2, naming the reason, for an unknown command or a missing or wrong setting", async () => {

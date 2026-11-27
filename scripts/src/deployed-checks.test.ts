@@ -167,16 +167,24 @@ describe("runSmokeCheck", () => {
 });
 
 describe("measure", () => {
-  function timed(durations: number[], failEvery = 0) {
+  /**
+   * A stand-in server and clock. Time passes only while a call is answered
+   * (by that call's duration) and while the measurement pauses (by the pause
+   * asked for), so no test waits for real.
+   */
+  function timed(durations: number[], failEvery = 0, failStatus = 500) {
     let clock = 0;
     let call = 0;
+    const starts: number[] = [];
+    const pauses: number[] = [];
     const fetchTimed = (() => {
+      starts.push(clock);
       const duration = durations[call % durations.length] as number;
       call += 1;
       clock += duration;
       const failed = failEvery > 0 && call % failEvery === 0;
       return Promise.resolve(
-        new Response("{}", { status: failed ? 500 : 200 }),
+        new Response("{}", { status: failed ? failStatus : 200 }),
       );
     }) as typeof fetch;
     return {
@@ -184,8 +192,21 @@ describe("measure", () => {
       accessPassword: PASSWORD,
       fetch: fetchTimed,
       now: () => clock,
+      wait: (ms: number) => {
+        pauses.push(ms);
+        clock += ms;
+        return Promise.resolve();
+      },
       made: () => call,
+      starts,
+      pauses,
     };
+  }
+
+  function gaps(starts: number[]): number[] {
+    return starts
+      .slice(1)
+      .map((start, index) => start - (starts[index] as number));
   }
 
   it("makes 100 calls after the warm-up and passes when the 95th of 100 is within 1 second", async () => {
@@ -197,6 +218,7 @@ describe("measure", () => {
     expect(result).toEqual({
       calls: 100,
       failures: 0,
+      refused: 0,
       p50Ms: 40,
       p95Ms: 40,
       maxMs: 40,
@@ -228,5 +250,144 @@ describe("measure", () => {
     const allFail = await measure({ ...timed([40], 1), warmUpCalls: 0 });
     expect(allFail.failures).toBe(100);
     expect(allFail.passed).toBe(false);
+  });
+
+  it("never starts a call sooner than 125 ms after the one before it started, warm-up calls included", async () => {
+    // 29 ms a call: what the test environment answered in on 2026-11-27.
+    // Unpaced, that is about 34 calls a second against a limit of 10.
+    const server = timed([29]);
+
+    await measure(server);
+
+    expect(server.starts).toHaveLength(105);
+    expect(gaps(server.starts)).toEqual(Array.from({ length: 104 }, () => 125));
+    // Nothing to wait for before the very first call.
+    expect(server.starts[0]).toBe(0);
+    expect(server.pauses).toHaveLength(104);
+  });
+
+  it("keeps to the pace when calls take different times, and to another pace when given one", async () => {
+    const uneven = timed([10, 124, 60]);
+    await measure({ ...uneven, calls: 30, warmUpCalls: 3 });
+    expect(Math.min(...gaps(uneven.starts))).toBe(125);
+    expect(Math.max(...gaps(uneven.starts))).toBe(125);
+
+    const slower = timed([10]);
+    await measure({ ...slower, calls: 10, warmUpCalls: 0, paceMs: 500 });
+    expect(gaps(slower.starts)).toEqual(Array.from({ length: 9 }, () => 500));
+  });
+
+  it("adds no pause after a call that already took as long as the pace, or longer", async () => {
+    const slow = timed([200]);
+    await measure({ ...slow, calls: 10, warmUpCalls: 2 });
+    expect(slow.pauses).toEqual([]);
+    expect(gaps(slow.starts)).toEqual(Array.from({ length: 11 }, () => 200));
+
+    const exactly = timed([125]);
+    await measure({ ...exactly, calls: 10, warmUpCalls: 0 });
+    expect(exactly.pauses).toEqual([]);
+
+    // Only the short calls are followed by a pause, and only for what is left of the pace.
+    const mixed = timed([200, 25]);
+    await measure({ ...mixed, calls: 4, warmUpCalls: 0 });
+    expect(mixed.pauses).toEqual([100]);
+    expect(gaps(mixed.starts)).toEqual([200, 125, 200]);
+  });
+
+  it("pauses again when a pause ends early, so that the gap is never shorter than the pace", async () => {
+    const server = timed([25]);
+    let clock = 0;
+    const starts: number[] = [];
+    const early = {
+      ...server,
+      fetch: (() => {
+        starts.push(clock);
+        clock += 25;
+        return Promise.resolve(new Response("{}", { status: 200 }));
+      }) as typeof fetch,
+      now: () => clock,
+      // A timer that ends 1 ms before it was asked to, as real ones sometimes do.
+      wait: (ms: number) => {
+        clock += Math.max(ms - 1, 0.5);
+        return Promise.resolve();
+      },
+    };
+
+    await measure({ ...early, calls: 5, warmUpCalls: 0 });
+
+    expect(Math.min(...gaps(starts))).toBeGreaterThanOrEqual(125);
+  });
+
+  it("takes each call's time from its own start, so the pause is no part of it", async () => {
+    const server = timed([29]);
+
+    const result = await measure(server);
+
+    // Each call was followed by a pause of 96 ms, and none of it is counted.
+    expect(server.pauses).toEqual(Array.from({ length: 104 }, () => 96));
+    expect(result.p50Ms).toBe(29);
+    expect(result.p95Ms).toBe(29);
+    expect(result.maxMs).toBe(29);
+    expect(result.passed).toBe(true);
+  });
+
+  it("still counts a call refused with 429 as a failure, and says how many were refused", async () => {
+    // 9 of 100 refused, as on 2026-11-27: more than 5, so the run fails.
+    const nineRefused = await measure({
+      ...timed([29], 11, 429),
+      warmUpCalls: 0,
+    });
+    expect(nineRefused.failures).toBe(9);
+    expect(nineRefused.refused).toBe(9);
+    expect(nineRefused.p95Ms).toBe(Number.POSITIVE_INFINITY);
+    expect(nineRefused.passed).toBe(false);
+
+    // A refused call is not forgiven even when few enough to pass: it is counted.
+    const oneRefused = await measure({
+      ...timed([29], 100, 429),
+      warmUpCalls: 0,
+    });
+    expect(oneRefused.failures).toBe(1);
+    expect(oneRefused.refused).toBe(1);
+    expect(oneRefused.passed).toBe(true);
+
+    // Other failures are failures too, and are not called refused.
+    const serverErrors = await measure({
+      ...timed([29], 10, 500),
+      warmUpCalls: 0,
+    });
+    expect(serverErrors.failures).toBe(10);
+    expect(serverErrors.refused).toBe(0);
+
+    const allRefused = await measure({
+      ...timed([29], 1, 429),
+      warmUpCalls: 0,
+    });
+    expect(allRefused.failures).toBe(100);
+    expect(allRefused.refused).toBe(100);
+    expect(allRefused.passed).toBe(false);
+  });
+
+  it("counts a call that could not be made as a failure, and keeps the pace after it", async () => {
+    const server = timed([29]);
+    let made = 0;
+    const unreachable = {
+      ...server,
+      fetch: ((input: URL, init?: RequestInit) => {
+        made += 1;
+        return made % 2 === 0
+          ? Promise.reject(new TypeError("fetch failed"))
+          : server.fetch(input, init);
+      }) as typeof fetch,
+    };
+
+    const result = await measure({ ...unreachable, calls: 10, warmUpCalls: 0 });
+
+    expect(result.failures).toBe(5);
+    expect(result.refused).toBe(0);
+    expect(made).toBe(10);
+    // A call that failed at once took no time, so the whole pace is waited
+    // after it; an answered one took 29 ms, so 96 ms are.
+    expect(server.pauses).toEqual([96, 125, 96, 125, 96, 125, 96, 125, 96]);
   });
 });
