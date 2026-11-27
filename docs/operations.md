@@ -61,12 +61,63 @@ Steps:
    repository, not in Terraform's state.
 2. Open the confirmation message you receive and confirm the subscription.
    Until you do, alarms fire and nobody is told.
-3. `infra/setup/github-settings.sh`. It stores the pipeline's two identities
-   as repository variables, makes `aws-migration` the default branch, creates
-   the `production` environment with you as required reviewer, and protects
-   the branch. If GitHub's plan for the repository does not allow a required
-   reviewer or branch protection, the script stops and says so.
+3. `infra/setup/github-settings.sh`. It stores the pipeline's two identities,
+   the state bucket's name and the alarm topic's name as repository secrets,
+   makes `aws-migration` the default branch, creates the `production`
+   environment with you as required reviewer, and protects the branch. If
+   GitHub's plan for the repository does not allow a required reviewer or
+   branch protection, the script stops and says so.
 4. Merge the first pull request. The pipeline builds both environments.
+
+**Once, after the change that made those four names secrets is merged**
+(Unit U1, Step 21): run `infra/setup/github-settings.sh` again, signed in to
+GitHub and to AWS as for the setup. Do it
+before the next run of the pipeline if you can. It stores the four names as
+secrets and then removes the four variables that held them
+(`AWS_ROLE_TEST`, `AWS_ROLE_PRODUCTION`, `TF_STATE_BUCKET`,
+`ALARM_TOPIC_ARN`). `AWS_REGION` stays a variable. Nothing breaks if a run
+starts before you have done it: for this one release each workflow reads the
+secret first and the variable if there is no secret. Until you have run it,
+the step that takes the identity still prints the role's full name, account
+number included; everything after that step is already masked. Check
+afterwards on GitHub, Settings, "Secrets and variables", Actions: four
+secrets, and one variable.
+
+## The AWS account's number in workflow logs
+
+The repository is public, and so are its workflow logs. The account's number
+is not a credential, but it is kept out of them:
+
+- The four names that contain it are secrets, so GitHub prints `***` in
+  their place.
+- In every job that takes an AWS identity, the step straight after reads the
+  account's number and tells GitHub to mask it for the rest of the job.
+  Terraform's plan, bucket names and AWS's error messages then show `***`
+  where the number would be.
+
+What this does not cover:
+
+- **Logs of runs made before this.** They still show the number, in the step
+  that takes the identity and in Terraform's plans. Removing them is your
+  decision; it also removes the record of those runs (the record of
+  Deployments, which the pipeline reads, is kept elsewhere and is not
+  affected). In the repository's folder, to remove one run and its logs:
+  `gh run delete <run id>`. To list the runs of one workflow with their
+  identifiers:
+  `gh run list --workflow deliver.yml --limit 100 --json databaseId,createdAt,conclusion`.
+  The workflows that have taken an identity are `deliver`, `go-back`,
+  `compare` and `prove-identity-limits`. On the website: Actions, open the
+  run, the menu at the top right, "Delete all logs" (keeps the run, removes
+  its logs) or, from the list of runs, the run's menu, "Delete workflow
+  run". Settings, Actions, General, "Artifact and log retention" shortens
+  how long logs are kept from now on; it does not remove existing ones
+  sooner.
+- **Files a run uploads.** Masking applies to logs, not to uploaded files.
+  The two the pipeline uploads (the built Release, and the end-to-end tests'
+  report when they fail) are made without the account's number.
+- **A run with debug logging switched on**, or a step added later that
+  prints the number in another form (encoded, or split across lines). Keep
+  new steps to plain output.
 
 What can go wrong:
 
@@ -156,6 +207,10 @@ whole time.
    is pointed at the copy yet, and the site answers from the first database
    throughout.
 
+   Terraform waits at most 40 minutes for the restore, so that a slow one
+   ends the run cleanly inside the job's 60 minutes. If it gives up, see
+   "When the restore takes too long" below.
+
 **Point the site at it.**
 
 4. In a second pull request, add `use_restored_copy = true`. Merge it.
@@ -174,18 +229,91 @@ whole time.
    The copy's address begins `vd-test-db-restored.`.
 
 8. `/v1/site-information` answers the same `installedAt` as before, because
-   the copy holds the same row.
+   the copy holds the same row. The server answers only with the access
+   cookie. This command reads the password from AWS inside itself, so the
+   password is neither shown in the terminal nor kept in the shell's history:
+
+   `curl -sS --cookie "vd_access=$(aws ssm get-parameter --name vd-test-access-password --with-decryption --query Parameter.Value --output text)" https://test.virtuoso.andrefellipelabs.com/v1/site-information`
+
+   Run it before step 4 as well, and compare the two answers.
 
 **Go back, and remove the copy.**
 
 9. A pull request sets `use_restored_copy = false` (or removes the line).
-   Merged, the site answers from the first database again.
-10. A further pull request removes `restored_copy_time`. Merged, the copy,
-    its backups and its log are deleted. It leaves no snapshot.
+   Merged, the site answers from the first database again. Confirm it with
+   the command of step 7: the address no longer begins
+   `vd-test-db-restored.`.
+10. Only then, a further pull request removes `restored_copy_time`. Merged,
+    the copy, its backups and its log are deleted. It leaves no snapshot.
+    Terraform waits at most 30 minutes for the removal.
 
-Steps 9 and 10 are two pull requests on purpose: the site must be off the
-copy, and seen to be, before the copy is removed. Terraform refuses to do
-both in the wrong order (`use_restored_copy` without a copy).
+**Steps 9 and 10 must be two pull requests. Nothing refuses doing both in
+one, and doing so takes the site down.** Terraform checks only that
+`use_restored_copy` is not on without a copy; it cannot know which database
+the running server was given. Each version of the server keeps the database
+address it was published with, and the running version changes only at the
+deployment's switch step, near the end of the run. In a single pull request
+the order would be: Terraform removes the copy at once; the server that is
+still running was published with the copy's address and can no longer reach
+a database; the deployment's first smoke check, which tests the running
+version straight after Terraform, fails; the run stops there, before the
+switch, and ends as `notPutInPlace`. The site then answers 503 from health
+and 500 from site information until someone acts.
+
+If that has happened:
+
+- Go back in test (procedure 3). The previous Release is the one from before
+  the site was pointed at the copy, and its version of the server has the
+  first database's address. Then start the failed `deliver` run's failed
+  jobs again ("Re-run failed jobs"): the smoke check now passes and the run
+  goes on to publish a version on the first database.
+- If more than one Release was deployed while the copy was in use, the
+  previous Release points at the copy too and going back does not help.
+  Then put `restored_copy_time` back by a pull request, with
+  `use_restored_copy` still off: the copy is restored under the same name,
+  which should give it the same address, the running server reaches it
+  again, and the same run goes on to publish a version on the first
+  database. Remove the copy in a later pull request.
+
+**Changing the moment.** Changing `restored_copy_time` to another moment
+replaces the copy: Terraform removes it and restores a new one in the same
+run. Do not do that in one step. While the site is pointed at the copy it
+takes the site down for the length of a restore, 10 to 25 minutes or more;
+and even when nothing is pointed at it, the removal and the restore
+together may outlast the job. Change the moment as steps 9 and 10, then
+steps 1 to 3 with the new moment.
+
+**When the restore takes too long.** If AWS has not finished after 40
+minutes, Terraform stops waiting and the run fails, with the Deployment
+recorded as `notPutInPlace`. The site is not affected: nothing was pointed
+at the copy. What is left: the copy, which AWS goes on creating; Terraform's
+record, which holds the copy marked as incomplete and is not locked; and
+whatever else that run changed, which was the copy's log group and each
+function's permission to sign in to it. To recover:
+
+1. Wait until this prints `available`:
+
+   `aws rds describe-db-instances --db-instance-identifier vd-test-db-restored --query 'DBInstances[0].DBInstanceStatus' --output text`
+
+2. Remove `restored_copy_time` by a pull request. Terraform deletes the
+   incomplete copy.
+3. Start again from step 1.
+
+Starting the failed run again would also work in the end, but Terraform
+would delete the copy and restore it once more in one run, which is the
+slow case above.
+
+The limit exists because of what the alternative leaves. A run that GitHub
+stops at 60 minutes while Terraform is still waiting leaves Terraform's lock
+in the state bucket, so that the next run stops with "state locked", and may
+leave the copy out of Terraform's record. If you ever see that: the lock is
+released with `terraform force-unlock` and the identifier the failed run
+prints, from `infra/environment` after `terraform init` with the backend
+settings the workflow uses; then follow the three steps above. If Terraform
+then reports that the copy already exists, it must be brought into
+Terraform's record (`terraform import`) or deleted, and deleting a database
+by hand, even this copy, is your decision to make, not a step of this
+procedure.
 
 **What the switches do not do.**
 
@@ -317,9 +445,61 @@ on the branch `aws-migration`. The run takes the test identity and tries
 three things it must not be able to do: tag a production resource, change the
 budget's notification, and change who may take its own identity. Each attempt
 is written so that it would change nothing of substance even if it were
-allowed. The run prints, for each, `refused`, `NOT refused` or
-`could not tell`, and fails unless all three were refused. It prints no
-account number and nothing AWS answered beyond the kind of error.
+allowed. The run prints, for each, `refused`, `NOT refused`,
+`refused, but NOT by an explicit deny` or `could not tell`, and fails unless
+all three were refused. For the first and the third attempt, `refused` means
+AWS answered that an explicit deny stopped it, which is what the identity's
+outer limit is made of; a refusal that only reflects a missing permission
+does not prove the limit and fails the run. For the budget, the identity has
+no permission at all, and any refusal counts. The run prints no account
+number and nothing AWS answered beyond the kind of error.
+
+## 9. Rehearse a deployment that fails
+
+Done once, in the test environment, and recorded in
+`docs/records/failing-deployment.md`. It shows that when the database
+changes fail, the new version is not put in place and the site keeps
+running what it ran.
+
+The switch is `failing_change` in `infra/environment/test.tfvars`, off by
+default. While it is `true`, the change runner applies the real pending
+database changes as usual and then one more, kept apart in
+`db-migrate/rehearsal/`, whose only statement fails at once and changes
+nothing. That change is never recorded as applied. Terraform refuses the
+switch in production, and so does the change runner itself.
+
+1. Note the version the test site shows.
+2. In a pull request, add `failing_change = true` to `test.tfvars`. Merge
+   it.
+3. The `deliver` run applies Terraform (the only change is one setting of
+   the change runner), passes the smoke check of the running version, and
+   fails at "Database changes" with the message "Rehearsal: this database
+   change fails on purpose and changes nothing". The steps after it do not
+   run. Its summary reads `notPutInPlace`. The jobs for the end-to-end tests
+   and for production do not start. GitHub emails you about the failed run;
+   no alarm email is sent, because only production's job sends one.
+4. Open the test site. It shows the same version as in step 1 and the
+   answered view.
+5. In a second pull request, set `failing_change = false` (or remove the
+   line). Merge it. The run succeeds and applies no database change.
+
+What to know before using it at another time:
+
+- **Real pending changes are applied first and stay applied.** Each
+  database change is committed by itself, so a failure in a later one does
+  not undo an earlier one; that is how a real failure behaves, and the
+  rehearsal keeps it. In the rehearsal above nothing is pending. If a pull
+  request with a real database change is merged while the switch is on,
+  that change reaches the test database, the Release that needs it does
+  not, and the next successful deployment finds it already applied. This is
+  safe because database changes only add, but do not leave the switch on.
+- **Every deployment to test fails while the switch is on,** and so nothing
+  can reach production. Turn it off with the next pull request.
+- The failing change is part of every Release's package, production's
+  included, because the same package goes to both. It runs only when the
+  change runner's setting `VD_FAILING_CHANGE` is `on`; Terraform never
+  gives production that setting, and a change runner told it is in
+  production refuses to start with it.
 
 ## Things that happen by themselves
 

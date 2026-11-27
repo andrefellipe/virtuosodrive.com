@@ -114,6 +114,13 @@ run "a_moment_makes_the_copy_and_points_nothing_at_it" {
     error_message = "The copy must be removable in one step: no deletion protection and no final snapshot."
   }
 
+  # The pipeline's test job is stopped by GitHub after 60 minutes; the wait
+  # for the restore must end by itself before that.
+  assert {
+    condition     = module.database.restored_copy.create_timeout == "40m" && module.database.restored_copy.delete_timeout == "30m"
+    error_message = "Terraform must give up waiting for the restore after 40 minutes and for the removal after 30, so that a slow one fails inside the job's 60 minutes with Terraform's record intact."
+  }
+
   assert {
     condition     = module.server.database_hosts.server == "first.database.example.com" && module.server.database_hosts.migrate == "first.database.example.com"
     error_message = "Making the copy must not point anything at it: the server and the change runner stay on the first database."

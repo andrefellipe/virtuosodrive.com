@@ -9,7 +9,7 @@ import { Signer } from "@aws-sdk/rds-signer";
 import { Client } from "pg";
 import { loadConfig, parseMasterSecret } from "./config.ts";
 import type { RunnerConfig } from "./config.ts";
-import { CREATE_USERS_FILE, MIGRATIONS_DIR } from "./paths.ts";
+import { CREATE_USERS_FILE, MIGRATIONS_DIR, REHEARSAL_DIR } from "./paths.ts";
 import { runChanges } from "./runner.ts";
 import type { RunReport } from "./runner.ts";
 
@@ -90,6 +90,8 @@ export async function handler(): Promise<RunReport> {
       connectAsMaster: () => connectAsMaster(config),
       migrationsDir: MIGRATIONS_DIR,
       createUsersSql: readFileSync(CREATE_USERS_FILE, "utf8"),
+      // Test only: the settings refuse the switch in production.
+      ...(config.failingChange ? { rehearsalDir: REHEARSAL_DIR } : {}),
       log: (message) => logger.info(message),
     });
     logger.info("Database changes finished", { ...report });

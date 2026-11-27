@@ -32,7 +32,10 @@ jobs:
     env:
       ENVIRONMENT: ${{ inputs.environment || 'test' }}
       AWS_REGION: ${{ vars.AWS_REGION }}
-      STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      # A secret, so that GitHub masks it in the log; the variable of the same
+      # name is read only until the setup script has been run again
+      # (docs/operations.md, procedure 1).
+      STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET || vars.TF_STATE_BUCKET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,9 +60,16 @@ jobs:
       - name: Take the environment's identity (one hour, no stored keys)
         uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         with:
-          role-to-assume: ${{ inputs.environment == 'production' && vars.AWS_ROLE_PRODUCTION || vars.AWS_ROLE_TEST }}
+          role-to-assume: ${{ inputs.environment == 'production' && (secrets.AWS_ROLE_PRODUCTION || vars.AWS_ROLE_PRODUCTION) || (secrets.AWS_ROLE_TEST || vars.AWS_ROLE_TEST) }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 3600
+
+      # The first act with the identity: from here on the account's number is
+      # replaced by *** wherever Terraform's plan prints it.
+      - name: Keep the AWS account's number out of this job's log
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
 
       - name: Terraform's plan; nothing is applied
         working-directory: infra/environment

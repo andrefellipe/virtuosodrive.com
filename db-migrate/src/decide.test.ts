@@ -66,7 +66,39 @@ describe("the change runner's settings", () => {
       region: "us-east-1",
       database: { host: "db.example.com", port: 5432, name: "virtuoso" },
       masterSecretId: "vd-prod-db-master",
+      failingChange: false,
     });
+  });
+
+  it("turns the failing change on only when asked, in the test environment", () => {
+    const test = { ...complete, VD_ENVIRONMENT: "test" };
+
+    expect(loadConfig(test).failingChange).toBe(false);
+    expect(
+      loadConfig({ ...test, VD_FAILING_CHANGE: "off" }).failingChange,
+    ).toBe(false);
+    expect(loadConfig({ ...test, VD_FAILING_CHANGE: "on" }).failingChange).toBe(
+      true,
+    );
+  });
+
+  it("refuses the failing change in production", () => {
+    expect(() => loadConfig({ ...complete, VD_FAILING_CHANGE: "on" })).toThrow(
+      "VD_FAILING_CHANGE must never be on in production",
+    );
+    expect(
+      loadConfig({ ...complete, VD_FAILING_CHANGE: "off" }).failingChange,
+    ).toBe(false);
+  });
+
+  it("refuses a value for the failing change that is neither on nor off", () => {
+    expect(() =>
+      loadConfig({
+        ...complete,
+        VD_ENVIRONMENT: "test",
+        VD_FAILING_CHANGE: "true",
+      }),
+    ).toThrow(/VD_FAILING_CHANGE/);
   });
 
   it("names the settings that are missing", () => {

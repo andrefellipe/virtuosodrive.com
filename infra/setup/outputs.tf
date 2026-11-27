@@ -19,7 +19,7 @@ output "state_bucket" {
 }
 
 output "deploy_role_arns" {
-  description = "The two pipeline identities, stored as GitHub repository variables by github-settings.sh."
+  description = "The two pipeline identities, stored as GitHub repository secrets by github-settings.sh."
   value       = { for name, role in aws_iam_role.deploy : name => role.arn }
 }
 

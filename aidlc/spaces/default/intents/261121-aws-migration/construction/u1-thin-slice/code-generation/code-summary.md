@@ -404,6 +404,119 @@ The page is 75,321 bytes compressed; the built gate is 6,377 bytes.
 - Whether AWS refuses a budget notification set to its own values with an error of its own before it checks permission. If it does, that attempt reads `could not tell`.
 - That the fifth and sixth pull requests take effect in the running site. They should: the deploy step publishes a new version of the server after Terraform has changed the function's settings, and moves the live name to it.
 
+### The second round (Step 19 as amended on 2026-11-27)
+
+Built on 2026-11-27 on the branch `u1-rehearsal-2`. Nothing was committed,
+pushed or deployed, and no workflow was started. Step 19 is still not
+finished: the rehearsals themselves remain. `infra/environment/test.tfvars`
+is unchanged (`alarms` and `forced_failure` still on, the new switch absent
+and so off).
+
+**The failing deployment is rehearsed with a switch.**
+
+- `failing_change`, a variable of the environment (`infra/environment/variables.tf`), false by default, refused in production by validation. It reaches the change runner as the setting `VD_FAILING_CHANGE = "on"` (`infra/modules/server/main.tf`). The setting exists only while the switch is on: off, the change runner's settings are the five it had, so production's function has no change at all.
+- The change runner's settings (`db-migrate/src/config.ts`) read it as on or off, off when absent, and refuse to start with it on in production.
+- When on, the runner (`db-migrate/src/runner.ts`, `apply-migrations.ts`) applies the real pending changes as always and then the one file in `db-migrate/rehearsal/`, through the same tool, lock, transaction and record table. Its only statement raises "Rehearsal: this database change fails on purpose and changes nothing". The folder is outside `migrations/`, so no ordinary run and no test of the real changes ever finds it. `scripts/src/build.ts` copies the folder into the change runner's package.
+- **Real pending changes applied before the failing one stay applied**: each change is its own transaction. That is how a real failure behaves, and `docs/operations.md`, procedure 9, says so.
+- It cannot be recorded as applied: it fails inside its own transaction. If its file were ever edited so that it did not fail, the runner removes the record it just made and fails anyway.
+- Tests: `db-migrate/src/failing-change.integration.test.ts`, five tests against a real PostgreSQL, run in order on one database: the run fails with the rehearsal's message and the real changes are recorded and nothing else; a second run fails again and records and changes nothing (the recorded names, the row of `site_information` and the list of tables are compared); a rehearsal file that does not fail still fails the run and leaves no record; the next run with the switch off succeeds and applies nothing; the folder holds exactly the one file, outside `migrations/`. `db-migrate/src/decide.test.ts`: three tests of the setting (off by default, on in test, refused in production, a wrong value refused). `infra/environment/tests/failing-change.tftest.hcl`: four runs (off: no setting; on in test: the setting; production refuses it; production as it is has exactly its five settings).
+- `docs/operations.md` has a new procedure 9; `docs/records/failing-deployment.md` describes the rehearsal as it now is.
+
+**The three points from the review, and the two extras.**
+
+- (a) Procedure 4 no longer says Terraform refuses pointing back and removing the copy together. It says they must be two pull requests, why (a running version keeps the database address it was published with until the switch step, and the first smoke check runs after Terraform has already removed the copy), what breaks, and two ways to recover. It also says how to change the moment, and step 8 gives a command that calls the server with the access cookie, reading the password from Parameter Store inside the command.
+- (b) `timeouts` on the copy: 40 minutes to create, 30 to delete, with the reasoning written beside them, and "When the restore takes too long" in procedure 4. A Terraform assertion reads both values.
+- (c) In `prove-identity-limits`, attempts 1 and 3 count as refused only when AWS's answer says "explicit deny"; a refusal without it is printed as "refused, but NOT by an explicit deny" and fails the run. Attempt 2 keeps the general rule. Still nothing of AWS's answers is printed. The setup's definition does deny both explicitly (`OtherEnvironmentByName`, `WhatTheSetupMade` in `infra/setup/identities.tf`).
+- `try()` is on the two values the copy's test output reads from inside the restore block, not around the whole output: around the whole, Terraform reports every value as unknown while planning and all the copy's assertions stop working (tried).
+- `infra/environment/tests/production-policy.tftest.hcl` holds the full text of both functions' policies and compares it with what the configuration produces for production. The expected text was checked against the definition in the Release running in production (`1db1c19`). `copy-keeps-first-database.tftest.hcl` applies the database module three times with the stand-in (no copy, a copy, no copy) and checks the first database is the same one each time.
+
+**Found while writing that last test, and changed.** With both databases in
+Terraform's record, the module's outputs `address` and `port` were treated
+as secret, because they were read from a choice between two whole database
+records, each of which holds the master password. In the environment that
+would not have failed a run, but it would have hidden the database address
+in the plan of the very pull requests that change it. The choice is now
+made on the address and on the port themselves. The existing assertions on
+which address each function is given pass unchanged.
+
+## A pull request that adds a database change can pass its checks (Step 20)
+
+- **The tests no longer assume how many changes exist.** `db-migrate/src/testing/changes.ts` lists the files of `migrations/` in order. `migrations.integration.test.ts` asserts that the first run applies exactly that list, that the record table holds it in order, and that a second run applies nothing and leaves the record as it was; what it asserts about the first change (the single row, the constraint, what `app` may do) is unchanged. `runner.integration.test.ts` asserts the report against the same list. `scripts/src/commands.test.ts` reads the folder for the package's expected files.
+- **The compatibility check** (`.github/workflows/checks.yml`) keeps copying the pull request's SQL files over those of each Release in reach, and now runs only that Release's tests under `server/`. It fails if a Release has no `server/` folder or no database helper, so it cannot pass by running nothing.
+- **Said plainly: the plan's wording could not be followed to the letter.** The frozen Release's server tests cannot be pointed at a database prepared outside them: each test file starts its own empty PostgreSQL through the Release's helper. So the pull request's changes are applied by that helper, inside each test file, and not once beforehand by the pull request's own runner. The purpose is kept: the Release's server code reads a database that has the new changes. That the pull request's own runner applies them to an empty database is shown by the pull request's own integration tests, in the step before.
+- **The rule the check relies on**, for every later Release: the server's tests live under `server/` and get their database from `db-migrate/src/testing/postgres.ts`, which applies `db-migrate/migrations`. Written in the workflow and in `docs/examples.md`.
+
+**Proof, on 2026-11-27**, in a scratch checkout of `1db1c19` inside the
+project (`.reach-proof/`, made with `git worktree add --detach`, removed
+afterwards), using the project's installed dependencies (the lockfile is the
+same in both commits), each run being
+`node ../node_modules/vitest/vitest.mjs run server` from the scratch folder:
+
+| The scratch copy's `migrations/` | Command | Result |
+|----------------------------------|---------|--------|
+| This branch's files, unchanged | new check (`run server`) | 16 files, 102 tests passed, exit 0 |
+| Plus `0002`, creating an unrelated table | new check (`run server`) | 16 files, 102 tests passed, exit 0 |
+| The same | old check (`run server db-migrate`) | 3 tests failed in the Release's two change-runner test files, exit 1: the fault this step removes |
+| `0002` renaming `site_information.installed_at` | new check (`run server`) | 7 tests failed with `column "installed_at" does not exist`, exit 1 |
+
+The three earlier Releases (`d615fed`, `e25df3d`, `c5b5c33`) have the same
+`server/`, `db-migrate/` and lockfile as `1db1c19`, so the same holds for
+whichever of them going back in production would restore.
+
+## The AWS account's number stays out of the workflow logs (Step 21)
+
+- `infra/setup/github-settings.sh` stores the two role names, the state bucket's name and the alarm topic's name as repository secrets, each passed to `gh` on standard input, then removes the four variables if they are there. `AWS_REGION` stays a variable.
+- `deliver`, `go-back`, `compare` and `prove-identity-limits` read each of the four as the secret first and the variable second, so they work before and after the maintainer runs the script again. The deploy action already took the state bucket as an input and reads nothing else of the four.
+- In every job that takes an identity, the next step reads the account's number and masks it for the rest of the job.
+- `docs/operations.md`: the one-time second run of the script, a section on what is and is not covered, and how to delete earlier runs or their logs, as the maintainer's choice.
+
+**What can still show the number.**
+
+- Until the script is run again: the step that takes the identity, which prints the role's name from the variable. Everything after it in the job is masked.
+- Every run made before this change, until its logs are deleted.
+- A run with debug logging on was not examined.
+- Uploaded files are not masked. The two uploads (the Release, built in a job with no identity; the end-to-end report) were read for where the number could enter, and none was found.
+
+**Looked for and not found:** a value passed between jobs that contains the
+number (GitHub drops a job output that contains a masked value). The only
+job output is the Release's version. The bucket names that contain the
+number go from step to step through the job's environment file, which
+masking does not affect.
+
+### Run on 2026-11-27, second round
+
+| Command | Result |
+|---------|--------|
+| `terraform -chdir=infra/environment test`, before any change | 15 passed, 0 failed, exit 0 |
+| `terraform fmt -check -recursive infra` | Clean, exit 0 |
+| `terraform -chdir=infra/environment validate` | Valid, exit 0 |
+| `terraform -chdir=infra/setup validate` | Valid, exit 0 |
+| `terraform -chdir=infra/environment test` | 23 passed, 0 failed, exit 0 |
+| `terraform -chdir=infra/setup test` | 3 passed, 0 failed, exit 0 |
+| `npm run check` | Exit 0: format, lint, type check, 203 tests passed in 27 files with coverage (lines 91.81%, 774 of 843), build, repository checks (794 files) |
+
+`terraform -chdir=infra/environment init -backend=false -input=false -lockfile=readonly`
+was run once, as the pull request's checks do, because a new test file
+applies the database module by itself and Terraform must register it first.
+
+**Not verified, for this round.**
+
+- Everything that needs GitHub or AWS: no workflow was run. That includes the masking step, the `secrets.X || vars.X` expressions, `gh secret set` reading standard input, and `gh variable delete`.
+- The new logic of `prove-identity-limits` was read, not run. It depends on AWS's answers for a Lambda tag and for an IAM trust definition containing the words "explicit deny"; if either service words it differently, that attempt reads "refused, but NOT by an explicit deny" and the run fails, wrongly.
+- Whether GitHub masks the number inside job summaries and annotations as it does in log lines. No summary or annotation the workflows write contains it by design.
+- The failing change in AWS: that the published change runner sees the new setting, and that the run ends as `notPutInPlace`. Both follow from the deploy action as read. The message the run prints is the one the integration test sees.
+- What a restore that times out leaves in Terraform's record, and the recovery written for it. The 40 minutes for creating is also what the provider is believed to wait by default.
+- That a copy restored again under the same name gets the same address, which the second recovery in procedure 4 relies on.
+- Checkov was not run here.
+
+**Different from the plan or the brief.**
+
+- `try()` placement, as above.
+- The compatibility check's method, as above.
+- The module's `address` and `port` outputs were rewritten, which nobody asked for; the reason is above.
+- `unit-test-instructions.md` is part of the approved plan and was not edited. Its counts are now behind: the change runner's unit tests are 13 (it says 6), database changes have 4 integration tests plus 5 for the runner and 5 for the failing change, and Terraform has 23 runs in 7 files (it says 2).
+- One command's output was sent to a scratch file inside the project during the proof, against the working rule; the file was deleted in the next command and later runs were read from the tool's output.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.

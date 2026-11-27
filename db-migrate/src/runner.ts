@@ -1,5 +1,5 @@
 import type { Client } from "pg";
-import { applyMigrations } from "./apply-migrations.ts";
+import { applyFailingChange, applyMigrations } from "./apply-migrations.ts";
 import { decideUserCreation, isSignInRefusal } from "./decide.ts";
 import type { ExistingUsers } from "./decide.ts";
 
@@ -11,6 +11,13 @@ export interface RunnerDependencies {
   migrationsDir: string;
   /** The statement that creates the users "app" and "migrator". */
   createUsersSql: string;
+  /**
+   * Only for the rehearsal of a failing deployment, in the test environment:
+   * the folder holding the change that fails on purpose. When given, it is
+   * applied after the real pending changes and the run fails. Left out in
+   * every ordinary run.
+   */
+  rehearsalDir?: string;
   log(message: string): void;
 }
 
@@ -71,6 +78,9 @@ async function createUsersIfNew(
  * is refused and the master sign-in confirms the users do not exist, create
  * them first; then take the lock and apply the pending files. Running it
  * again is harmless: files already applied are recorded and skipped.
+ *
+ * With a rehearsal folder given, the run then applies the change that fails
+ * on purpose, and fails.
  */
 export async function runChanges(
   dependencies: RunnerDependencies,
@@ -97,6 +107,18 @@ export async function runChanges(
       dependencies.migrationsDir,
       dependencies.log,
     );
+    if (dependencies.rehearsalDir !== undefined) {
+      // Each real change above was committed in its own transaction and
+      // stays applied, as it would if a later real change failed.
+      dependencies.log(
+        `Rehearsal: applying the change that fails on purpose. Real changes applied first, which stay applied: ${applied.length === 0 ? "none" : applied.join(", ")}`,
+      );
+      await applyFailingChange(
+        migrator,
+        dependencies.rehearsalDir,
+        dependencies.log,
+      );
+    }
     return { createdUsers, applied };
   } finally {
     await end(migrator, dependencies.log);

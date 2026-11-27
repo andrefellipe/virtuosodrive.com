@@ -47,6 +47,21 @@ copy: the old code shows what the application does, not how new code looks.
   creates.
 - It is never undone when going back, so it carries no way back, and says in a
   comment how a later change would remove what it added.
+- It is one new file in `db-migrate/migrations/`, numbered after the last. No
+  test names the files or counts them: the tests of the change runner read
+  the folder (`db-migrate/src/testing/changes.ts`). Add assertions about what
+  your change creates; do not add its name to a list.
+- The pull request's check "Compatibility with every version in reach" runs
+  the tests under `server/` of the Release running in production, and of the
+  one going back would restore, against your SQL files. That check relies on
+  two things staying true, in every Release: the server's tests live under
+  `server/`, and they get their database from
+  `db-migrate/src/testing/postgres.ts`, which applies the folder
+  `db-migrate/migrations`. If the check fails on your pull request, your
+  change breaks something the running version reads: add in this Release,
+  and remove or rename in a later one.
+- `db-migrate/rehearsal/` is not a place for changes. It holds the one change
+  that fails on purpose (`docs/operations.md`, procedure 9).
 
 **AWS services in tests**
 

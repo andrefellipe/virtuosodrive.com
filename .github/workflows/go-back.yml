@@ -68,9 +68,18 @@ jobs:
         id: identity
         uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         with:
-          role-to-assume: ${{ inputs.environment == 'production' && vars.AWS_ROLE_PRODUCTION || vars.AWS_ROLE_TEST }}
+          # Secrets, so that GitHub masks them in the log; the variables of
+          # the same names are read only until the setup script has been run
+          # again (docs/operations.md, procedure 1).
+          role-to-assume: ${{ inputs.environment == 'production' && (secrets.AWS_ROLE_PRODUCTION || vars.AWS_ROLE_PRODUCTION) || (secrets.AWS_ROLE_TEST || vars.AWS_ROLE_TEST) }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 3600
+
+      - name: Keep the AWS account's number out of this job's log
+        if: steps.previous.outputs.found == 'yes'
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
 
       - name: Move the server's name back and put that Release's entry document back
         if: steps.previous.outputs.found == 'yes'
@@ -132,7 +141,7 @@ jobs:
       - name: Tell the maintainer that going back failed
         if: failure() && steps.identity.outcome == 'success'
         env:
-          ALARM_TOPIC_ARN: ${{ vars.ALARM_TOPIC_ARN }}
+          ALARM_TOPIC_ARN: ${{ secrets.ALARM_TOPIC_ARN || vars.ALARM_TOPIC_ARN }}
         run: |
           aws sns publish --topic-arn "${ALARM_TOPIC_ARN}" \
             --subject "Virtuoso Drive, ${ENVIRONMENT}: going back failed" \

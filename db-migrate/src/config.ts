@@ -6,6 +6,8 @@ import { z } from "zod";
  * environment's users must be created.
  */
 
+const onOff = z.enum(["on", "off"]).transform((value) => value === "on");
+
 const settingsShape = z.object({
   VD_ENVIRONMENT: z.enum(["test", "production"]),
   DB_HOST: z.string().min(1),
@@ -13,6 +15,8 @@ const settingsShape = z.object({
   DB_NAME: z.string().min(1),
   DB_MASTER_SECRET_ID: z.string().min(1),
   AWS_REGION: z.string().min(1),
+  /** Makes every run fail on purpose, to rehearse a failing deployment. Never on in production. */
+  VD_FAILING_CHANGE: onOff.default(false),
 });
 
 export interface RunnerConfig {
@@ -20,6 +24,8 @@ export interface RunnerConfig {
   region: string;
   database: { host: string; port: number; name: string };
   masterSecretId: string;
+  /** Whether the run applies, last, the change that fails on purpose. */
+  failingChange: boolean;
 }
 
 export function loadConfig(
@@ -35,6 +41,9 @@ export function loadConfig(
     );
   }
   const settings = parsed.data;
+  if (settings.VD_FAILING_CHANGE && settings.VD_ENVIRONMENT === "production") {
+    throw new Error("VD_FAILING_CHANGE must never be on in production");
+  }
   return {
     environment: settings.VD_ENVIRONMENT,
     region: settings.AWS_REGION,
@@ -44,6 +53,7 @@ export function loadConfig(
       name: settings.DB_NAME,
     },
     masterSecretId: settings.DB_MASTER_SECRET_ID,
+    failingChange: settings.VD_FAILING_CHANGE,
   };
 }
 

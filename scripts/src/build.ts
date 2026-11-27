@@ -118,6 +118,13 @@ async function buildChangeRunner(out: string): Promise<void> {
     join(out, "db-migrate", "migrations"),
     { recursive: true },
   );
+  // The change that fails on purpose, for the rehearsal of a failing
+  // deployment. Applied only when the test environment's switch is on.
+  cpSync(
+    source("db-migrate", "rehearsal"),
+    join(out, "db-migrate", "rehearsal"),
+    { recursive: true },
+  );
   // The change runner verifies the database's certificate against the same
   // published authorities as the server.
   cpSync(source("server", "certs"), join(out, "db-migrate", "certs"), {
