@@ -6,12 +6,13 @@ vpc_cidr_block = "10.20.0.0/24"
 # Alarms and the health check exist in test only while an alarm is being
 # proved: one pull request turns these two on, a second turns them off.
 #
-# 2026-11-27: on for the rehearsal of the alarms; goes back to false when it is done.
-alarms = true
-# 2026-11-27: on for the rehearsal of the error-rate alarm; goes back to false when it is done.
-forced_failure = true
-# 2026-11-27: on for the rehearsal of a failing deployment; the next pull request sets it back to false.
-failing_change = true
+# 2026-11-27: both were on for the rehearsal of the alarms, and are off again
+# (docs/records/alarm-proofs.md).
+alarms         = false
+forced_failure = false
+# 2026-11-27: was on for the rehearsal of a failing deployment, and is off
+# again (docs/records/failing-deployment.md).
+failing_change = false
 
 deletion_protection = false
 
