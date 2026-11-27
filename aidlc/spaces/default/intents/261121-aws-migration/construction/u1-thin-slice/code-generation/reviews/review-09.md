@@ -1,0 +1,32 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-11-27T16:04:32Z
+**Iteration:** 1
+**Verdict Dictated:** no
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Minor | .github/workflows/checks.yml > compatibility check, `EXPECTED="$(grep -c . in-reach.txt)"` | The count is sound for the normal cases: an empty list exits earlier through the `-s` test, and a list whose last line has no newline makes the loop skip that line, so the count check fails the run rather than passing it. Two odd cases remain. A file holding only blank lines is non-empty, `grep -c` then exits 1 with count 0, and the step stops under `bash -e` with no message. A whitespace-only line is counted by `grep -c .` but gives an empty Release to the loop. Neither is likely, because `deployment-record.ts in-reach` writes one Release per line. | Optional: use `EXPECTED="$(grep -c . in-reach.txt \|\| true)"`, or have `deployment-record.ts` always end each line with a newline and never write blank lines. Not needed for this merge. | New |
+| R-02 | Minor | scripts/src/measure.ts > `PACE_MS`, and docs/operations.md procedure 2 | Pacing is correct: `previousStartedAt` is the call's own start, the wait loop re-reads the clock so a gap never falls under 125 ms, and the pause is taken before `timedCall` so it is not in any duration. The tests prove it with a fake clock that advances only through fetch and wait, and they check exact gaps (104 gaps of 125 ms, uneven call times, an early-ending timer, a call that threw). Margin: 8 a second against a sustained 10, with the burst of 20 refilling at 10 a second. A burst emptied by the end-to-end tests and the smoke check just before is refilled at 10 a second while the measurement draws 8, so the margin cannot run out unless something else calls at the same time. That margin is arithmetic on the limit, not observed; the pipeline's next run is the proof, as the summary says. The clock is `performance.now()` in `cli.ts`, which is monotonic, so the pacing does not depend on the machine's wall clock. | None. Keep `PACE_MS` tied to the lowest sustained limit as its comment says. | New |
+| R-03 | Minor | infra/setup/github-settings.sh > `store_secret` calls | Nothing is changed on GitHub before both sign-ins are checked and all five values are read and checked for emptiness. `ROLE_TEST="$(role_arn test)" \|\| fail` does stop on a failed read, because `role_arn` is a pipeline and `pipefail` is set. `printf` is a shell builtin, so no value is on a command line, and nothing prints a value. The only partial state left is a `gh secret set` that fails part-way through the four stores. Those secrets would be complete and correct and a second run puts the rest right, but the script says nothing about it. | Optional: print a line before the stores saying that a failed store can be repaired by running the script again. | New |
+| R-04 | Minor | docs/operations.md > procedure 4 step 8 | `aws ... \| sed 's/^/Cookie: vd_access=/' \| curl -sS --header @- URL` keeps the password out of every command line and out of history, and `--header @-` (stdin, curl 7.55 and later) is valid. If `aws` fails (expired sign-in), `sed` outputs nothing and `curl` sends no cookie, so the person gets the password page and not an error, and might read it as a result. | Add one sentence to the procedure: if the answer is the password page, the sign-in to AWS has probably expired, so sign in and run it again. | New |
+| R-05 | Minor | infra/modules/database/main.tf > `timeouts` and comment | The arithmetic holds. The apply begins at about minute 1 to 2, a restore given up on fails the run at about minute 32, and one that finishes at the limit leaves about 28 minutes for a rest of 4 to 12. The Terraform test asserts `30m` for create and `30m` for delete. `try(copy.timeouts.create, null)` makes a record without time limits give null, which makes the test assertion fail loudly, so it hides nothing. The comment and procedure 4 say a moment change replaces the copy with a wait of up to 60 minutes, which equals the whole job. The procedure already splits that change into two pull requests, and that is why this is not a problem. The "10 to 25 minutes" for a restore is not measured. | None for this merge. When the restore rehearsal runs, record the real restore time in docs/records so the 30 minutes can be checked. | New |
+| R-06 | Minor | .github/actions/deploy/action.yml > "Remove Releases older than the ten most recent" loop | The same `while read ... done < to-remove.txt` pattern is there, but the commands inside are `aws s3 rm` and `aws lambda`, which do not read standard input. If one did, the effect would be older Releases left in storage, not a wrong deployment. The developer's choice to leave it is reasonable. | None now. Either leave it, or move it to file descriptor 3 in a later round for consistency. | New |
+| R-07 | Minor | scripts/src/cli.ts, scripts/src/measure.ts (`refused`), checks.yml (count check), setup script (Region check), docs/records/measured-speeds.md | Changes beyond the plan: the `refused` figure and its printed line, the tested-Releases count, the Region emptiness check, and the usage text and record note. Each is small, serves the plan's aim, and is stated in the code summary. `npm run check` (211 tests, coverage above the floor), `terraform test` in both folders (23 and 3 passed) and `bash -n` all pass on my run. | None. | New |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| npm run check | PASS (format, lint, types, tests with coverage, build, repository checks) | The new pacing tests and the 429 tests pass. |
+| terraform -chdir=infra/environment test | PASS, 23 passed | The restored-copy test matches the 30m limit. |
+| terraform -chdir=infra/setup test | PASS, 3 passed | No effect from this round. |
+| bash -n infra/setup/github-settings.sh | PASS | Syntax valid. |
+
+### Summary
+
+The pacing is correct, is proven by tests that check exact gaps without counting the pause, and leaves a 20 percent margin under the test environment's limit. The setup script now reads everything before it changes anything, the descriptor 3 loop is valid bash with a sound count check, and the 30 minute restore limit fits the 60 minute job. Only minor points remain, none of which blocks the merge.

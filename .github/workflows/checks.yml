@@ -91,7 +91,14 @@ jobs:
             echo "No Release is in reach yet (nothing has been deployed to production), so there is nothing to check compatibility with."
             exit 0
           fi
-          while read -r RELEASE SHA _; do
+          # The list is read on a channel of its own (3), not on standard
+          # input: a command inside the loop that read standard input would
+          # otherwise swallow the next Release's line, and the check would
+          # pass without having tested that Release. For the same reason the
+          # Releases tested are counted and compared with the list.
+          EXPECTED="$(grep -c . in-reach.txt)"
+          TESTED=0
+          while read -r RELEASE SHA _ <&3; do
             echo "::group::Release ${RELEASE}: its server's tests against this pull request's database changes"
             git worktree add --detach "../reach-${RELEASE}" "${SHA}"
             if [ ! -d "../reach-${RELEASE}/server" ] || [ ! -f "../reach-${RELEASE}/db-migrate/src/testing/postgres.ts" ]; then
@@ -100,9 +107,15 @@ jobs:
             fi
             rm -rf "../reach-${RELEASE}/db-migrate/migrations"
             cp -R db-migrate/migrations "../reach-${RELEASE}/db-migrate/migrations"
-            (cd "../reach-${RELEASE}" && npm ci && npx vitest run server)
+            (cd "../reach-${RELEASE}" && npm ci && npx vitest run server) < /dev/null
+            TESTED=$((TESTED + 1))
             echo "::endgroup::"
-          done < in-reach.txt
+          done 3< in-reach.txt
+          if [ "${TESTED}" -ne "${EXPECTED}" ]; then
+            echo "::error::${EXPECTED} Releases are in reach and ${TESTED} were tested. The check proved less than it must and fails."
+            exit 1
+          fi
+          echo "Tested ${TESTED} of ${EXPECTED} Releases in reach."
           echo "NOTE: the page's end-to-end tests of each version in reach are not yet run against this pull request's server; that half of the check needs a way to start the server locally, which does not exist yet."
 
   infrastructure:

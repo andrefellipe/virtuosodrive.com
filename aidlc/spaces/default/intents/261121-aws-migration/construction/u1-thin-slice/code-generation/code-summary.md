@@ -517,6 +517,96 @@ applies the database module by itself and Terraform must register it first.
 - `unit-test-instructions.md` is part of the approved plan and was not edited. Its counts are now behind: the change runner's unit tests are 13 (it says 6), database changes have 4 integration tests plus 5 for the runner and 5 for the failing change, and Terraform has 23 runs in 7 files (it says 2).
 - One command's output was sent to a scratch file inside the project during the proof, against the working rule; the file was deleted in the next command and later runs were read from the tool's output.
 
+## The measurement paces itself, and four small corrections (Step 22)
+
+Built on 2026-11-27 on the branch `u1-rehearsal-3`. Nothing was committed,
+pushed or deployed, no workflow was started, and
+`infra/setup/github-settings.sh` was not run. No rehearsal is turned on:
+`infra/environment/test.tfvars` and `production.tfvars` are unchanged, and
+neither environment's request limit is changed.
+
+**What was found.** On 2026-11-27 the deployment of pull request 21 put
+Release `9a4fc16` in place in the test environment and passed the smoke
+check and the end-to-end tests. It then failed its measurement: 9 of 100
+calls failed. Those 9 were answered 429 by the test environment's own
+request limit (10 a second sustained, 20 in a burst). The measurement sent
+its calls one after another with no pause. In earlier runs a call took 126
+to 212 ms, which kept it under 10 a second by chance; in this run a call
+took 29 ms, about 34 a second. The fault was in the measurement, not in the
+server or the limit.
+
+**The measurement** (`scripts/src/measure.ts`).
+
+- A call starts no sooner than 125 ms after the previous one started (`PACE_MS`, 8 a second), warm-up calls included. 8 is under the lowest sustained limit of either environment: test's 10 (production's is 50).
+- The pause is taken before a call starts. Each call's time is still taken from its own start to the end of its answer, so no pause is in any figure.
+- A call that itself took 125 ms or longer is followed at once.
+- After each pause the clock is read again and, if the pace has not yet passed, the measurement pauses again: a timer can end a moment early, and the gap must never be shorter than the pace.
+- The pause is passed in (`wait`, beside `fetch` and `now`), so no test waits for real. `scripts/src/cli.ts` passes the same `wait` the smoke check already uses.
+- A 429 still counts as a failure. The result has one new figure, `refused`, the number of failures that were 429, and the command prints a line when it is not zero, saying that the measurement keeps under the limit and so something else was calling or the limit is lower than assumed.
+- 105 calls at this pace take about 13 seconds at the least.
+
+Tests, in `scripts/src/deployed-checks.test.ts` (7 new) and
+`scripts/src/commands.test.ts` (1 new): calls never start closer together
+than 125 ms, the 5 warm-up calls included (104 gaps checked); the pace holds
+when calls take different times, and another pace can be given; no pause
+after a call that took the pace or longer; a pause that ends early is
+followed by another; a call's time excludes the pause (29 ms a call measured
+as 29 ms, with 96 ms paused after each); 9 of 100 refused with 429 fails the
+run, as it did on 2026-11-27, and refusals are counted apart from other
+failures; a call that could not be made is a failure and the pace holds
+after it; the command prints the line about refusals and exits 1. The three
+existing tests of the measurement pass with their figures unchanged; one
+expects the new `refused: 0`.
+
+**The four corrections.**
+
+- **`infra/setup/github-settings.sh`.** At its start it now also checks that the AWS command line is installed and that the AWS sign-in works (`aws sts get-caller-identity`, its answer discarded because it contains the account's number), and stops with a plain message if not. It then reads all five values from Terraform (the four that become secrets, and the Region) before it stores anything, and stops if any cannot be read or is empty. Each secret's value still reaches `gh` on standard input, now from the shell's own `printf`, so it is never shown and never an argument of a program.
+- **The restore's time limit** (`infra/modules/database/main.tf`): 30 minutes to create, where it was 40; removal stays at 30. The reasoning is in the comment beside it and uses the two runs of 2026-11-27, read from GitHub (read-only): the apply began 1 to 2 minutes into the job, and everything after the deployment's Terraform step took about 4 minutes; at worst about 12 (the change runner may take 5.5, and the smoke checks retry). A restore that is given up on fails the run by about minute 32. One that finishes just inside the limit leaves about 28 minutes for those 4 to 12. The `restored_copy` output reads both time limits through `try()`. `restored-copy.tftest.hcl` asserts the new figure.
+- **`.github/workflows/checks.yml`**, the compatibility check: the list of Releases in reach is read on a channel of its own (file descriptor 3), and the commands run for each Release have their standard input taken from `/dev/null`. Beyond what the plan asks, the step counts the Releases it tested and fails if that is not the number in the list, so a skipped Release cannot pass unnoticed.
+- **`docs/operations.md`.** Procedure 4, step 8: the password goes from `aws` through `sed` to `curl --header @-` on standard input, so it is on no program's command line. `curl`'s manual on this machine (8.7.1) documents `@-` for `--header` as reading the headers from standard input, since 7.55.0. Procedure 4 also says 30 minutes where it said 40. Procedure 1 describes what the setup script now checks before it stores anything. Procedure 2 says the measurement is paced and what a reported 429 means.
+
+Also changed, to keep texts true: a comment on the measurement's step in
+`.github/workflows/deliver.yml`; the usage text at the top of
+`scripts/src/cli.ts`; a dated note under "Notes" in
+`docs/records/measured-speeds.md` describing the finding and the change.
+`traceability.json` names files only as targets, all still right, and is
+unchanged. `source-manifest.json` is unchanged: no file was added or removed.
+
+### Run on 2026-11-27, third round
+
+| Command | Result |
+|---------|--------|
+| `npm run check`, before any change | Exit 0: lines 91.81% (774 of 843), repository checks (796 files) |
+| `npx vitest run scripts --exclude '**/*.integration.test.ts'`, after the measurement and its tests | 5 files, 52 tests passed |
+| `npm run check` | Exit 0: format, lint, type check, 211 tests passed in 27 files with coverage (lines 92.1%, 793 of 861; statements 91.72%; branches 87.9%; functions 91.03%), build (page 75,322 bytes compressed, gate 6,377 bytes), repository checks (796 files) |
+| `terraform fmt -check -recursive infra` | Clean, exit 0 |
+| `terraform -chdir=infra/setup validate` | Valid, exit 0 |
+| `terraform -chdir=infra/setup test` | 3 passed, 0 failed, exit 0 |
+| `terraform -chdir=infra/environment validate` | Valid, exit 0 |
+| `terraform -chdir=infra/environment test` | 23 passed, 0 failed, exit 0 |
+| `bash -n infra/setup/github-settings.sh` | Syntax valid; the file is still executable |
+
+The tests are 211 where they were 203: 8 new, none removed. The 80%
+threshold was not touched. `scripts/src/measure.ts` is covered in full.
+
+**Not verified, for this round.**
+
+- The measurement against a deployed environment. That 8 calls a second stays under test's limit is arithmetic on the limit as configured; the proof is the pipeline's run in test passing its measurement. The limit is shared with whatever else calls the test site in the same seconds (a person, a rehearsal of the error-rate alarm), which pacing cannot prevent; the run now says so when it happens.
+- `infra/setup/github-settings.sh` was not run, as instructed. Its new checks were read and its syntax checked. Two things are reasoned and not tried: that a failed read inside `VALUE="$(...)" || fail` stops the script under `set -euo pipefail`, and that `gh secret set` stores exactly what `printf '%s'` sends it. What made one value empty on 2026-11-27 was not reproduced; the script now refuses an empty value whatever the cause.
+- The `curl` command of procedure 4 was not run against a server. Its form follows `curl`'s manual. `sed` and `curl` on macOS and Linux both accept it as written.
+- The changed loop in `checks.yml` was not run. It first runs on this round's own pull request, where two Releases may be in reach.
+- How long a restore takes in AWS, and so whether 30 minutes ever cuts a healthy one short. AWS's usual range was taken from the procedure as already written (10 to 25 minutes); it has not been measured here. The fourth pull request of Step 19's sequence is the first real restore.
+- The "about 12 minutes at worst" for the rest of the job is a sum of the limits written in the deploy action, not something seen.
+- Checkov was not run here.
+
+**Different from the plan or the brief, and noticed.**
+
+- The count of tested Releases in `checks.yml`, and the `refused` figure with its printed line, are small additions the plan does not spell out; both serve what it asks (the check must not pass over a Release; a 429 must be said).
+- The setup script also checks the Region for emptiness, a fifth value, because it is read from the same place.
+- The same kind of loop exists in `.github/actions/deploy/action.yml` ("Remove Releases older than the ten most recent": `while read -r OLD; do ... done < to-remove.txt`, with `aws` commands inside). The plan names only `checks.yml`, so it is left as it is. If a command there read standard input, older Releases would be left unremoved, which wastes storage and breaks nothing. It is for the maintainer to say whether it gets the same change.
+- `unit-test-instructions.md` is part of the approved plan and was not edited; its count for the scripts (18) is further behind.
+- One command was refused by the session's own guard (a one-line shell trial of the script's idioms) and was not retried another way; hence the second point under "Not verified".
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.
