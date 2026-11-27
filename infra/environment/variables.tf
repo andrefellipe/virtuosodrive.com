@@ -64,6 +64,38 @@ variable "forced_failure" {
   }
 }
 
+variable "restored_copy_time" {
+  description = "Restoring the database (docs/operations.md, procedure 4). When set to a moment, written as RFC 3339 in UTC (for example 2026-11-27T03:00:00Z), a second database exists beside the first, restored from the first to that moment. Null: no copy. Changing the moment replaces the copy. Test only."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.restored_copy_time == null || var.environment != "production"
+    error_message = "A restored copy is never made in production by this switch: restoring production is a decision of its own, with its own pull request."
+  }
+
+  validation {
+    condition     = var.restored_copy_time == null || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", var.restored_copy_time))
+    error_message = "The moment to restore to is written as RFC 3339 in UTC, to the second: for example 2026-11-27T03:00:00Z."
+  }
+}
+
+variable "use_restored_copy" {
+  description = "Points the server and the change runner at the restored copy. Allowed only while the copy exists. Test only."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !(var.use_restored_copy && var.environment == "production")
+    error_message = "Production is never pointed at a restored copy by this switch."
+  }
+
+  validation {
+    condition     = !var.use_restored_copy || var.restored_copy_time != null
+    error_message = "The restored copy can be used only while it exists: set restored_copy_time as well."
+  }
+}
+
 variable "access_gate_enabled" {
   description = "The access gate's on/off flag. Production's is switched off at the switch (Unit U9)."
   type        = bool

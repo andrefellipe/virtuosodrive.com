@@ -32,12 +32,14 @@ variable "security_group_ids" {
 
 variable "database" {
   type = object({
-    address            = string
-    port               = number
-    name               = string
-    resource_id        = string
-    master_secret_arn  = string
-    master_secret_name = string
+    address = string
+    port    = number
+    name    = string
+    # Every database the two functions may sign in to by AWS identity: the
+    # one in use, and a restored copy while one exists.
+    sign_in_resource_ids = list(string)
+    master_secret_arn    = string
+    master_secret_name   = string
   })
 }
 
@@ -79,6 +81,24 @@ locals {
   database_user = {
     server  = "app"
     migrate = "migrator"
+  }
+  # What each role may sign in to: its own database user, on each database
+  # listed. Sign-in by AWS identity is granted per database, so a restored
+  # copy needs its own line while it exists.
+  sign_in_arns = {
+    for role, user in local.database_user : role => [
+      for resource_id in var.database.sign_in_resource_ids :
+      "arn:aws:rds-db:${local.region}:${local.account_id}:dbuser:${resource_id}/${user}"
+    ]
+  }
+  # One database is written as text and several as a list, which a
+  # conditional cannot return directly because the two differ in type; hence
+  # the round trip through JSON. Written this way, the policy of an
+  # environment without a copy is the same, to the character, as before the
+  # copy could exist, so adding the switch changes nothing in production.
+  sign_in_resource = {
+    for role, arns in local.sign_in_arns : role =>
+    jsondecode(length(arns) == 1 ? jsonencode(arns[0]) : jsonencode(arns))
   }
   # A function in a VPC must manage its own network interfaces. These EC2
   # actions accept no narrower resource than "*".
@@ -157,7 +177,7 @@ resource "aws_iam_role_policy" "server" {
         Sid      = "SignInToTheDatabaseAsApp"
         Effect   = "Allow"
         Action   = "rds-db:connect"
-        Resource = "arn:aws:rds-db:${local.region}:${local.account_id}:dbuser:${var.database.resource_id}/${local.database_user.server}"
+        Resource = local.sign_in_resource.server
       },
       local.network_interface_statement,
     ]
@@ -195,7 +215,7 @@ resource "aws_iam_role_policy" "migrate" {
         Sid      = "SignInToTheDatabaseAsMigrator"
         Effect   = "Allow"
         Action   = "rds-db:connect"
-        Resource = "arn:aws:rds-db:${local.region}:${local.account_id}:dbuser:${var.database.resource_id}/${local.database_user.migrate}"
+        Resource = local.sign_in_resource.migrate
       },
       local.network_interface_statement,
     ]
@@ -444,6 +464,19 @@ output "migrate_function_name" {
 
 output "releases_bucket" {
   value = aws_s3_bucket.releases.bucket
+}
+
+output "database_hosts" {
+  description = "The database address each function is given, so that a test can read it."
+  value = {
+    server  = aws_lambda_function.server.environment[0].variables.DB_HOST
+    migrate = aws_lambda_function.migrate.environment[0].variables.DB_HOST
+  }
+}
+
+output "database_sign_in" {
+  description = "What each role's policy names for sign-in to the database by AWS identity, so that a test can read it: text for one database, a list for several."
+  value       = local.sign_in_resource
 }
 
 output "log_group_names" {

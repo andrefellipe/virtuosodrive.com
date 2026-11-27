@@ -82,6 +82,8 @@ module "database" {
   subnet_ids          = module.network.subnet_ids
   security_group_id   = module.network.security_group_ids.database
   deletion_protection = var.deletion_protection
+  restored_copy_time  = var.restored_copy_time
+  use_restored_copy   = var.use_restored_copy
 }
 
 module "server" {
@@ -94,13 +96,15 @@ module "server" {
     server  = module.network.security_group_ids.server
     migrate = module.network.security_group_ids.migrate
   }
+  # The address and port are those of the database in use: the first one's,
+  # or the restored copy's while use_restored_copy is on.
   database = {
-    address            = module.database.address
-    port               = module.database.port
-    name               = module.database.database_name
-    resource_id        = module.database.resource_id
-    master_secret_arn  = module.database.master_secret_arn
-    master_secret_name = module.database.master_secret_name
+    address              = module.database.address
+    port                 = module.database.port
+    name                 = module.database.database_name
+    sign_in_resource_ids = module.database.sign_in_resource_ids
+    master_secret_arn    = module.database.master_secret_arn
+    master_secret_name   = module.database.master_secret_name
   }
   origin_secret = {
     arn  = aws_secretsmanager_secret.origin.arn
