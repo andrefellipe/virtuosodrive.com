@@ -217,15 +217,22 @@ whole time.
 2. In a pull request, add `restored_copy_time = "<the moment>"` to
    `test.tfvars`. Merge it.
 3. The deployment creates the copy. Expect this run to take much longer than
-   usual: AWS needs roughly 10 to 25 minutes to restore a database. Nothing
-   is pointed at the copy yet, and the site answers from the first database
-   throughout.
+   usual. Nothing is pointed at the copy yet, and the site answers from the
+   first database throughout.
 
-   Terraform waits at most 30 minutes for the restore, so that a slow one
-   ends the run cleanly well inside the job's 60 minutes, and one that
-   finishes at the last moment still leaves the rest of the deployment
-   about half the job. If it gives up, see "When the restore takes too
-   long" below.
+   Terraform waits at most 40 minutes for the copy, so that a slow one ends
+   the run cleanly inside the job's 60 minutes, and one that finishes at the
+   last moment still leaves the rest of the deployment 18 minutes. If it
+   gives up, see "When the restore takes too long" below.
+
+   Measured on 2026-11-27 in test: the copy was ready 34 minutes after the
+   run began creating it. AWS restored it in 14 minutes. It then took the
+   copy's first backup, which took 18 more, because the copy is given the
+   first database's 7 days of backups; Terraform waits for that as well. A
+   first attempt with a limit of 30 minutes failed during that backup
+   (`docs/records/restore.md`). A setting in `infra/` cannot switch the
+   copy's backups off at the restore: the AWS provider in use does not pass
+   it on.
 
 **Point the site at it.**
 
@@ -261,6 +268,12 @@ whole time.
    password on `curl`'s command line for as long as it runs.)
 
    Run it before step 4 as well, and compare the two answers.
+
+   If the answer is the password page and not JSON, the AWS sign-in on
+   your machine has probably expired. `aws` then prints its error and
+   hands nothing on, `curl` calls the site with no cookie, and the site
+   answers as it does to anyone without one. Sign in to AWS again and
+   repeat the command.
 
 **Go back, and remove the copy.**
 
@@ -303,15 +316,17 @@ If that has happened:
 **Changing the moment.** Changing `restored_copy_time` to another moment
 replaces the copy: Terraform removes it and restores a new one in the same
 run. Do not do that in one step. While the site is pointed at the copy it
-takes the site down for the length of a restore, 10 to 25 minutes or more;
+takes the site down for the length of a restore, 34 minutes when measured;
 and even when nothing is pointed at it, the removal and the restore
-together may outlast the job. Change the moment as steps 9 and 10, then
+together may wait up to 70 minutes, which is longer than the job's 60. Change the moment as steps 9 and 10, then
 steps 1 to 3 with the new moment.
 
-**When the restore takes too long.** If AWS has not finished after 30
+**When the restore takes too long.** If AWS has not finished after 40
 minutes, Terraform stops waiting and the run fails, with the Deployment
-recorded as `notPutInPlace`. The site is not affected: nothing was pointed
-at the copy. What is left: the copy, which AWS goes on creating; Terraform's
+recorded as `notPutInPlace`. This happened on 2026-11-27, when the limit
+was 30 minutes and the copy's first backup, not the restore, outlasted it. The site is not
+affected: nothing was pointed at the copy. What is left: the copy, which AWS
+goes on creating (and, once restored, backing up); Terraform's
 record, which holds the copy marked as incomplete and is not locked; and
 whatever else that run changed, which was the copy's log group and each
 function's permission to sign in to it. To recover:

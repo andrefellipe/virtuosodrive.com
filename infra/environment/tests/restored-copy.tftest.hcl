@@ -115,11 +115,11 @@ run "a_moment_makes_the_copy_and_points_nothing_at_it" {
   }
 
   # The pipeline's test job is stopped by GitHub after 60 minutes; the wait
-  # for the restore must end by itself well before that, with room left for
+  # for the restore must end by itself before that, with room left for
   # the rest of the deployment when a restore succeeds at the last moment.
   assert {
-    condition     = module.database.restored_copy.create_timeout == "30m" && module.database.restored_copy.delete_timeout == "30m"
-    error_message = "Terraform must give up waiting for the restore after 30 minutes and for the removal after 30, so that a slow one fails well inside the job's 60 minutes with Terraform's record intact."
+    condition     = module.database.restored_copy.create_timeout == "40m" && module.database.restored_copy.delete_timeout == "30m"
+    error_message = "Terraform must give up waiting for the restore after 40 minutes and for the removal after 30, so that a slow one fails inside the job's 60 minutes with Terraform's record intact, and a healthy one (34 minutes when measured) is not cut short."
   }
 
   assert {
