@@ -10,6 +10,8 @@ vpc_cidr_block = "10.20.0.0/24"
 alarms = true
 # 2026-11-27: on for the rehearsal of the error-rate alarm; goes back to false when it is done.
 forced_failure = true
+# 2026-11-27: on for the rehearsal of a failing deployment; the next pull request sets it back to false.
+failing_change = true
 
 deletion_protection = false
 
