@@ -7,9 +7,12 @@
 # wrongly allowed: a tag named for the rehearsal, a notification set to the
 # values it already has, a trust definition set to the one it already has.
 #
-# What is printed: each attempt's name and "refused", "NOT refused" or
-# "could not tell". Nothing AWS answers is printed except the kind of error,
-# because its messages carry the account's number.
+# What is printed: each attempt's name and "refused", "NOT refused",
+# "refused, but NOT by an explicit deny" or "could not tell". For the first
+# and the third attempt, "refused" means AWS answered that an explicit deny
+# stopped it; for the second, that the identity has no permission for it.
+# Nothing AWS answers is printed except the kind of error, because its
+# messages carry the account's number.
 name: prove-identity-limits
 
 on:
@@ -39,14 +42,20 @@ jobs:
       - name: Take the test environment's identity (one hour, no stored keys)
         uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_TEST }}
+          # A secret, so that GitHub masks it in the log; the variable of the
+          # same name is read only until the setup script has been run again.
+          role-to-assume: ${{ secrets.AWS_ROLE_TEST || vars.AWS_ROLE_TEST }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 3600
+
+      - name: Keep the AWS account's number out of this job's log
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
 
       - name: Three attempts, each of which AWS must refuse
         run: |
           ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-          echo "::add-mask::${ACCOUNT_ID}"
 
           FAILED=0
 
@@ -54,15 +63,30 @@ jobs:
           # "refused" only when AWS says the identity is not allowed. Any
           # other failure (a wrong name, a missing resource, a mistyped
           # command) proves nothing and counts as "could not tell".
+          #
+          # The second argument says what kind of refusal proves the limit:
+          #   explicit  the design puts an explicit deny in the way (security
+          #             design S3), and AWS says so in its answer ("with an
+          #             explicit deny"). A refusal without those words means
+          #             only that nothing happens to allow the action today,
+          #             which the next permission added could change; it does
+          #             not prove the limit and fails the run.
+          #   any       the identity is given no permission at all for the
+          #             action, so any refusal is the expected one.
           attempt() {
-            local name="$1"
-            shift
+            local name="$1" kind_of_refusal="$2"
+            shift 2
             local answer result kind
             if answer="$("$@" 2>&1)"; then
               result="NOT refused"
               FAILED=1
             elif grep -Eq 'AccessDenied|UnauthorizedOperation|is not authorized to perform' <<< "${answer}"; then
-              result="refused"
+              if [ "${kind_of_refusal}" = "any" ] || grep -Fqi 'explicit deny' <<< "${answer}"; then
+                result="refused"
+              else
+                result="refused, but NOT by an explicit deny (the limit is not proved)"
+                FAILED=1
+              fi
             else
               kind="$(sed -nE 's/.*An error occurred \(([A-Za-z0-9.]+)\) when calling the ([A-Za-z0-9]+) operation.*/\1 from \2/p' <<< "${answer}" | head -n 1)"
               result="could not tell (${kind:-the command failed before AWS answered})"
@@ -75,7 +99,7 @@ jobs:
           # 1. A production resource. Harmless if allowed: one tag, named for
           #    this rehearsal, which is taken off again below.
           PRODUCTION_FUNCTION="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:vd-prod-server"
-          attempt "Tag a production resource" \
+          attempt "Tag a production resource" explicit \
             aws lambda tag-resource --resource "${PRODUCTION_FUNCTION}" --tags rehearsal=identity-limits
           if [ "${LAST_RESULT}" = "NOT refused" ]; then
             if aws lambda untag-resource --resource "${PRODUCTION_FUNCTION}" --tag-keys rehearsal > /dev/null 2>&1; then
@@ -89,7 +113,7 @@ jobs:
           #    notification of infra/setup/budget.tf, set to the values it
           #    already has.
           NOTIFICATION="NotificationType=ACTUAL,ComparisonOperator=GREATER_THAN,Threshold=80,ThresholdType=PERCENTAGE"
-          attempt "Change the budget's notification" \
+          attempt "Change the budget's notification" any \
             aws budgets update-notification --account-id "${ACCOUNT_ID}" --budget-name vd-monthly \
             --old-notification "${NOTIFICATION}" --new-notification "${NOTIFICATION}"
 
@@ -118,7 +142,7 @@ jobs:
               }]
             }' > "${TRUST_FILE}"
           fi
-          attempt "Change the trust definition of its own role" \
+          attempt "Change the trust definition of its own role" explicit \
             aws iam update-assume-role-policy --role-name vd-test-deploy --policy-document "file://${TRUST_FILE}"
           rm -f "${TRUST_FILE}"
 

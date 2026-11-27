@@ -96,16 +96,27 @@ jobs:
       - name: Take the test environment's identity (one hour, no stored keys)
         uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_TEST }}
+          # A secret, so that GitHub masks it in the log; the variable of the
+          # same name is read only until the setup script has been run again
+          # (docs/operations.md, procedure 1).
+          role-to-assume: ${{ secrets.AWS_ROLE_TEST || vars.AWS_ROLE_TEST }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 3600
+
+      # The first act with the identity: from here to the end of the job the
+      # account's number is replaced by *** wherever a step prints it
+      # (Terraform's plan, bucket names, AWS's error messages).
+      - name: Keep the AWS account's number out of this job's log
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
 
       - name: Deploy to test
         uses: ./.github/actions/deploy
         with:
           environment: test
           version: ${{ env.VERSION }}
-          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          state-bucket: ${{ secrets.TF_STATE_BUCKET || vars.TF_STATE_BUCKET }}
           github-token: ${{ github.token }}
 
       - name: Install for the end-to-end tests
@@ -185,23 +196,28 @@ jobs:
         id: identity
         uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_PRODUCTION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_PRODUCTION || vars.AWS_ROLE_PRODUCTION }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 3600
+
+      - name: Keep the AWS account's number out of this job's log
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
 
       - name: Deploy the same Release, unchanged, to production
         uses: ./.github/actions/deploy
         with:
           environment: production
           version: ${{ env.VERSION }}
-          state-bucket: ${{ vars.TF_STATE_BUCKET }}
+          state-bucket: ${{ secrets.TF_STATE_BUCKET || vars.TF_STATE_BUCKET }}
           pause-seconds: "120"
           github-token: ${{ github.token }}
 
       - name: Tell the maintainer that the production deployment failed
         if: failure() && steps.identity.outcome == 'success'
         env:
-          ALARM_TOPIC_ARN: ${{ vars.ALARM_TOPIC_ARN }}
+          ALARM_TOPIC_ARN: ${{ secrets.ALARM_TOPIC_ARN || vars.ALARM_TOPIC_ARN }}
         run: |
           aws sns publish --topic-arn "${ALARM_TOPIC_ARN}" \
             --subject "Virtuoso Drive, production: deployment failed" \

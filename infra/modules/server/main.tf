@@ -72,6 +72,12 @@ variable "forced_failure" {
   type        = bool
 }
 
+variable "failing_change" {
+  description = "Makes the change runner fail on purpose after the real pending changes, to rehearse a failing deployment. Never in production."
+  type        = bool
+  default     = false
+}
+
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
@@ -369,14 +375,21 @@ resource "aws_lambda_function" "migrate" {
     log_group  = aws_cloudwatch_log_group.migrate.name
   }
 
+  # The rehearsal's switch is a setting only while it is on. Off, the
+  # function's settings are exactly what they were before the switch existed,
+  # so adding it changes nothing in production; the change runner reads a
+  # missing setting as off.
   environment {
-    variables = {
-      VD_ENVIRONMENT      = var.environment
-      DB_HOST             = var.database.address
-      DB_PORT             = tostring(var.database.port)
-      DB_NAME             = var.database.name
-      DB_MASTER_SECRET_ID = var.database.master_secret_name
-    }
+    variables = merge(
+      {
+        VD_ENVIRONMENT      = var.environment
+        DB_HOST             = var.database.address
+        DB_PORT             = tostring(var.database.port)
+        DB_NAME             = var.database.name
+        DB_MASTER_SECRET_ID = var.database.master_secret_name
+      },
+      var.failing_change ? { VD_FAILING_CHANGE = "on" } : {},
+    )
   }
 
   depends_on = [aws_iam_role_policy.migrate]
@@ -471,6 +484,22 @@ output "database_hosts" {
   value = {
     server  = aws_lambda_function.server.environment[0].variables.DB_HOST
     migrate = aws_lambda_function.migrate.environment[0].variables.DB_HOST
+  }
+}
+
+output "migrate_settings" {
+  description = "The names of the change runner's settings (its environment variables), and whether the rehearsal's switch is among them and on, so that a test can read them."
+  value = {
+    names          = sort(keys(aws_lambda_function.migrate.environment[0].variables))
+    failing_change = lookup(aws_lambda_function.migrate.environment[0].variables, "VD_FAILING_CHANGE", null)
+  }
+}
+
+output "role_policies" {
+  description = "The text of each function's policy, so that a test can compare it with what it must be."
+  value = {
+    server  = aws_iam_role_policy.server.policy
+    migrate = aws_iam_role_policy.migrate.policy
   }
 }
 

@@ -4,6 +4,7 @@ import { handler } from "./index.ts";
 import { CREATE_USERS_FILE, MIGRATIONS_DIR } from "./paths.ts";
 import { runChanges } from "./runner.ts";
 import type { RunnerDependencies } from "./runner.ts";
+import { changeNames } from "./testing/changes.ts";
 import { giveTestPassword, startPostgres } from "./testing/postgres.ts";
 import type { TestDatabase } from "./testing/postgres.ts";
 
@@ -60,12 +61,12 @@ describe("the change runner in a new environment", () => {
     await database?.stop();
   });
 
-  it("creates the users first, then applies the first change", async () => {
+  it("creates the users first, then applies every change, in order", async () => {
     const report = await runChanges(dependencies());
 
     expect(report).toEqual({
       createdUsers: true,
-      applied: ["0001_site-information"],
+      applied: changeNames(),
     });
     expect(masterSignIns).toBe(1);
     expect(messages.join("\n")).toContain("new environment");

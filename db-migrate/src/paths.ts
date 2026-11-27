@@ -7,6 +7,12 @@ export const MIGRATIONS_DIR = fileURLToPath(
   new URL("../migrations", import.meta.url),
 );
 
+// The change that fails on purpose, for the rehearsal of a failing deployment.
+// It is kept outside migrations/ so that no ordinary run ever finds it.
+export const REHEARSAL_DIR = fileURLToPath(
+  new URL("../rehearsal", import.meta.url),
+);
+
 export const CREATE_USERS_FILE = fileURLToPath(
   new URL("../migrations/users/create-users.sql", import.meta.url),
 );

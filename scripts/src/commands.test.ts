@@ -67,14 +67,27 @@ describe("the build of a Release", () => {
 
   it("builds the change runner's package with the SQL files beside it, where it looks for them", () => {
     const names = readFolder(join(out, "db-migrate")).map((file) => file.name);
+    // Every SQL file of the repository, however many there are.
+    const changes = readFolder(join(ROOT, "db-migrate", "migrations")).map(
+      (file) => `migrations/${file.name}`,
+    );
 
+    expect(changes).toContain("migrations/0001_site-information.sql");
     expect(names).toEqual(
       expect.arrayContaining([
         "src/index.mjs",
-        "migrations/0001_site-information.sql",
+        ...changes,
         "migrations/users/create-users.sql",
         "certs/rds-us-east-1-bundle.pem",
       ]),
+    );
+    // The rehearsal's failing change is in the package, and outside the
+    // folder the ordinary run applies.
+    expect(names.filter((name) => name.startsWith("rehearsal/"))).toEqual([
+      "rehearsal/9999_rehearsal-fails.sql",
+    ]);
+    expect(names.some((name) => /^migrations\/.*rehearsal/.test(name))).toBe(
+      false,
     );
   });
 

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyMigrations, MIGRATIONS_TABLE } from "./apply-migrations.ts";
 import { MIGRATIONS_DIR } from "./paths.ts";
+import { changeNames } from "./testing/changes.ts";
 import { startPostgres } from "./testing/postgres.ts";
 import type { TestDatabase } from "./testing/postgres.ts";
 
 const FIRST_CHANGE = "0001_site-information";
+const ALL_CHANGES = changeNames();
 const INSUFFICIENT_PRIVILEGE = "42501";
 const CHECK_VIOLATION = "23514";
 const UNIQUE_VIOLATION = "23505";
@@ -31,8 +33,11 @@ describe("database changes", () => {
     await database?.stop();
   });
 
-  it("apply to an empty database and are recorded", async () => {
-    expect(firstRun).toEqual([FIRST_CHANGE]);
+  it("apply to an empty database, every file once and in order, and are recorded", async () => {
+    // However many changes there are: every file, in the order of its name.
+    expect(ALL_CHANGES[0]).toBe(FIRST_CHANGE);
+    expect(new Set(ALL_CHANGES).size).toBe(ALL_CHANGES.length);
+    expect(firstRun).toEqual(ALL_CHANGES);
 
     const migrator = await database.connect("migrator");
     try {
@@ -40,7 +45,7 @@ describe("database changes", () => {
         "SELECT name FROM pgmigrations ORDER BY id",
       );
       expect(MIGRATIONS_TABLE).toBe("pgmigrations");
-      expect(recorded.rows.map((row) => row.name)).toEqual([FIRST_CHANGE]);
+      expect(recorded.rows.map((row) => row.name)).toEqual(ALL_CHANGES);
 
       const rows = await migrator.query<{ id: number; installed_at: Date }>(
         "SELECT id, installed_at FROM site_information",
@@ -67,10 +72,12 @@ describe("database changes", () => {
       const after = await migrator.query<{ installed_at: Date }>(
         "SELECT installed_at FROM site_information",
       );
-      const recorded = await migrator.query("SELECT name FROM pgmigrations");
+      const recorded = await migrator.query<{ name: string }>(
+        "SELECT name FROM pgmigrations ORDER BY id",
+      );
 
       expect(secondRun).toEqual([]);
-      expect(recorded.rowCount).toBe(1);
+      expect(recorded.rows.map((row) => row.name)).toEqual(ALL_CHANGES);
       expect(after.rows[0]?.installed_at).toEqual(before.rows[0]?.installed_at);
     } finally {
       await migrator.end();

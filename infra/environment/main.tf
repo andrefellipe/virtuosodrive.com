@@ -115,6 +115,7 @@ module "server" {
   server_concurrency       = var.server_concurrency
   throttle                 = var.throttle
   forced_failure           = var.forced_failure
+  failing_change           = var.failing_change
 }
 
 module "edge" {

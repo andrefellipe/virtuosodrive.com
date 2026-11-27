@@ -63,9 +63,25 @@ jobs:
           git --redact --no-banner --log-opts="origin/${GITHUB_BASE_REF}..HEAD"
 
       - name: Compatibility with every version in reach
-        # The tests of each Release that is running in production, or that
-        # going back would restore, are run against this pull request's
-        # database changes (reliability design R5).
+        # The version running in production, and the one going back would
+        # restore, must still work against a database that has this pull
+        # request's database changes (reliability design R5).
+        #
+        # For each such Release: its commit is checked out beside this one,
+        # this pull request's SQL files take the place of its own, and that
+        # Release's tests of the server are run. Each of those tests starts
+        # an empty PostgreSQL and applies every SQL file it finds before the
+        # server reads from it, so the Release's server code runs against the
+        # pull request's changes.
+        #
+        # Only the tests under server/ are run. The Release's tests of the
+        # change runner (under db-migrate/) and of the build (under scripts/)
+        # describe the SQL files that Release had, and say nothing about
+        # whether its server still works. A Release's checkout is frozen, so
+        # the rule must hold for every Release: the server's tests live under
+        # server/ and get their database from
+        # db-migrate/src/testing/postgres.ts, which applies the folder
+        # db-migrate/migrations. Keep both true (docs/examples.md).
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -76,11 +92,15 @@ jobs:
             exit 0
           fi
           while read -r RELEASE SHA _; do
-            echo "::group::Release ${RELEASE}: its tests against this pull request's database changes"
+            echo "::group::Release ${RELEASE}: its server's tests against this pull request's database changes"
             git worktree add --detach "../reach-${RELEASE}" "${SHA}"
+            if [ ! -d "../reach-${RELEASE}/server" ] || [ ! -f "../reach-${RELEASE}/db-migrate/src/testing/postgres.ts" ]; then
+              echo "::error::Release ${RELEASE} does not have its server's tests where this check expects them. The check proved nothing and fails."
+              exit 1
+            fi
             rm -rf "../reach-${RELEASE}/db-migrate/migrations"
             cp -R db-migrate/migrations "../reach-${RELEASE}/db-migrate/migrations"
-            (cd "../reach-${RELEASE}" && npm ci && npx vitest run server db-migrate)
+            (cd "../reach-${RELEASE}" && npm ci && npx vitest run server)
             echo "::endgroup::"
           done < in-reach.txt
           echo "NOTE: the page's end-to-end tests of each version in reach are not yet run against this pull request's server; that half of the check needs a way to start the server locally, which does not exist yet."

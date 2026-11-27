@@ -266,21 +266,42 @@ resource "aws_db_instance" "restored" {
   skip_final_snapshot      = true
   delete_automated_backups = true
 
+  # How long Terraform waits for AWS before it gives up, written out so that
+  # it is a decision and not a default. The run that makes the copy is the
+  # pipeline's test job, which GitHub stops after 60 minutes
+  # (.github/workflows/deliver.yml). A run stopped by GitHub in the middle of
+  # an apply leaves Terraform's lock in place and may leave its record
+  # without the copy. A wait that ends by itself does neither: Terraform
+  # records what it started, releases its lock and fails the run. About 5
+  # minutes of the job pass before the apply begins, so a restore that has
+  # not finished after 40 minutes fails at about minute 45, well inside the
+  # 60. A restore usually takes 10 to 25 minutes. Removing the copy is a run
+  # of its own and usually takes under 10 minutes.
+  #
+  # Changing the moment replaces the copy: a removal and a restore in one
+  # run, which together may wait up to 70 minutes. Procedure 4 of
+  # docs/operations.md therefore changes the moment in two pull requests.
+  timeouts {
+    create = "40m"
+    delete = "30m"
+  }
+
   depends_on = [aws_cloudwatch_log_group.restored_postgresql]
 }
 
-locals {
-  # The database the server and the change runner are pointed at.
-  in_use = var.use_restored_copy ? one(aws_db_instance.restored) : aws_db_instance.this
-}
-
+# The database the server and the change runner are pointed at. The choice is
+# made on the address and on the port, each by itself, and not on the whole
+# database: a database's record holds its master password, and choosing
+# between two whole records makes Terraform treat everything read from the
+# choice as secret once both databases exist (seen in
+# infra/environment/tests/copy-keeps-first-database.tftest.hcl).
 output "address" {
   description = "The address of the database in use: the first one's, or the restored copy's while use_restored_copy is on."
-  value       = local.in_use.address
+  value       = var.use_restored_copy ? one(aws_db_instance.restored[*].address) : aws_db_instance.this.address
 }
 
 output "port" {
-  value = local.in_use.port
+  value = var.use_restored_copy ? one(aws_db_instance.restored[*].port) : aws_db_instance.this.port
 }
 
 output "original_address" {
@@ -296,6 +317,11 @@ output "identifier" {
   value = aws_db_instance.this.identifier
 }
 
+output "first_database_id" {
+  description = "Terraform's own identifier of the first database, so that a test can tell whether a later run kept the same one."
+  value       = aws_db_instance.this.id
+}
+
 output "resource_id" {
   description = "The identifier sign-in by AWS identity is granted on, for the first database."
   value       = aws_db_instance.this.resource_id
@@ -307,11 +333,13 @@ output "sign_in_resource_ids" {
 }
 
 output "restored_copy" {
-  description = "What a test needs to read about the restored copy; null when there is none."
+  description = "What a test needs to read about the restored copy; null when there is none. Only tests read it. The two values read from inside the copy's restore block are guarded: should AWS ever report that block differently from how it was written, they are null and not an error that stops a deployment. The guard is on those two values and not on the whole output, because a guard around the whole would hide every value from a test while Terraform is only planning."
   value = one([for copy in aws_db_instance.restored : {
     identifier                          = copy.identifier
-    source_db_instance_identifier       = one(copy.restore_to_point_in_time).source_db_instance_identifier
-    restore_time                        = one(copy.restore_to_point_in_time).restore_time
+    source_db_instance_identifier       = try(one(copy.restore_to_point_in_time).source_db_instance_identifier, null)
+    restore_time                        = try(one(copy.restore_to_point_in_time).restore_time, null)
+    create_timeout                      = copy.timeouts.create
+    delete_timeout                      = copy.timeouts.delete
     address                             = copy.address
     storage_encrypted                   = copy.storage_encrypted
     iam_database_authentication_enabled = copy.iam_database_authentication_enabled
