@@ -130,19 +130,94 @@ fault, the remedy is a new pull request that reverses it.
 Amazon RDS keeps a daily backup for 7 days and can restore to any moment
 within them. A restore always creates a new database beside the old one.
 
-1. In a pull request, add a second database to the environment's Terraform,
-   restored from the moment you need (`restore_to_point_in_time` on a copy of
-   the resource in `infra/modules/database`), with a different identifier.
-2. Merge it. When the deployment succeeds, the copy exists.
-3. In a second pull request, point the server and the change runner at the
-   copy (`DB_HOST` comes from the database module's output `address`).
-4. Merge it and see the page answer.
-5. When the copy is confirmed good, a further pull request removes the old
-   database: first turning off its deletion protection, then, in another,
-   removing it. Terraform refuses to destroy a database in one step.
+Two switches in `infra/environment/test.tfvars` do it, each by a pull request.
+Neither touches the first database: it keeps running, with its data, the
+whole time.
 
-The rehearsal in the test environment follows steps 1 to 4, then switches back
-and removes the copy; record the time each step took.
+- `restored_copy_time`: a moment, written in UTC as `2026-11-27T03:00:00Z`.
+  While it is set, a second database, `vd-test-db-restored`, exists beside
+  the first, restored from the first to that moment. Both functions are
+  allowed to sign in to it from the run that creates it.
+- `use_restored_copy`: while `true`, the server and the change runner are
+  pointed at the copy. Terraform refuses it unless `restored_copy_time` is
+  set.
+
+**Make a copy.**
+
+1. Choose the moment. It must lie inside what the backups cover, which this
+   prints (the latest moment is usually about five minutes ago):
+
+   `aws rds describe-db-instance-automated-backups --db-instance-identifier vd-test-db --query 'DBInstanceAutomatedBackups[0].RestoreWindow'`
+
+2. In a pull request, add `restored_copy_time = "<the moment>"` to
+   `test.tfvars`. Merge it.
+3. The deployment creates the copy. Expect this run to take much longer than
+   usual: AWS needs roughly 10 to 25 minutes to restore a database. Nothing
+   is pointed at the copy yet, and the site answers from the first database
+   throughout.
+
+**Point the site at it.**
+
+4. In a second pull request, add `use_restored_copy = true`. Merge it.
+5. The deployment gives both functions the copy's address, runs the database
+   changes against the copy, and puts a new version of the server in place.
+   The site keeps answering from the first database until that switch, a few
+   seconds at the end of the run.
+
+**Confirm.**
+
+6. Open the site. The answered view means the server read the copy.
+7. Which database the running server is given:
+
+   `aws lambda get-function-configuration --function-name vd-test-server --qualifier live --query 'Environment.Variables.DB_HOST' --output text`
+
+   The copy's address begins `vd-test-db-restored.`.
+
+8. `/v1/site-information` answers the same `installedAt` as before, because
+   the copy holds the same row.
+
+**Go back, and remove the copy.**
+
+9. A pull request sets `use_restored_copy = false` (or removes the line).
+   Merged, the site answers from the first database again.
+10. A further pull request removes `restored_copy_time`. Merged, the copy,
+    its backups and its log are deleted. It leaves no snapshot.
+
+Steps 9 and 10 are two pull requests on purpose: the site must be off the
+copy, and seen to be, before the copy is removed. Terraform refuses to do
+both in the wrong order (`use_restored_copy` without a copy).
+
+**What the switches do not do.**
+
+- They do not make the copy the environment's lasting database. The copy has
+  no deletion protection, leaves no final snapshot, and is deleted the moment
+  `restored_copy_time` is removed or changed. The dashboard and Terraform's
+  own protection against removal stay with the first database. Keeping a
+  copy for good is a piece of work of its own: a pull request that makes the
+  copy the database Terraform protects (moving it in Terraform's record,
+  with deletion protection and a final snapshot), points the dashboard at
+  it, and only then, in further pull requests, turns off the first
+  database's deletion protection and removes it. Terraform refuses to
+  destroy the first database in one step.
+- They do not carry anything across. What was written to the first database
+  after the moment restored to is not in the copy, and what is written to
+  the copy while it is in use is lost when you go back. Database changes a
+  deployment applies while the copy is in use are applied to the copy only;
+  the first deployment after going back applies them to the first database.
+- They do not work in production. Terraform refuses both there, so that
+  production is never pointed at another database by a two-line change.
+  Restoring production means lifting that refusal in a pull request of its
+  own, read and approved for what it is.
+- They change what going back (procedure 3) returns to. Each version of the
+  server keeps the database address it was published with. While the copy is
+  in use, going back returns to the first database. After step 9, going back
+  returns to the copy. After step 10 the previous Release is step 9's, which
+  uses the first database, so going back is safe again; that is the other
+  reason steps 9 and 10 are separate. Never remove the copy while the
+  previous Release is one that was published while the copy was in use.
+
+The rehearsal in the test environment follows steps 1 to 10; record the time
+each step took in `docs/records/restore.md`.
 
 ## 5. Read, use and replace the access password
 
@@ -235,6 +310,16 @@ Done once, in the test environment, and recorded in
    `/v1/forced-failure` answers `notFound` again. It always answers `notFound`
    in production: Terraform refuses `forced_failure = true` there, and so does
    the server.
+
+**The limits of the pipeline's test identity** are proved the same day, with
+no pull request: on GitHub, Actions, `prove-identity-limits`, "Run workflow",
+on the branch `aws-migration`. The run takes the test identity and tries
+three things it must not be able to do: tag a production resource, change the
+budget's notification, and change who may take its own identity. Each attempt
+is written so that it would change nothing of substance even if it were
+allowed. The run prints, for each, `refused`, `NOT refused` or
+`could not tell`, and fails unless all three were refused. It prints no
+account number and nothing AWS answered beyond the kind of error.
 
 ## Things that happen by themselves
 

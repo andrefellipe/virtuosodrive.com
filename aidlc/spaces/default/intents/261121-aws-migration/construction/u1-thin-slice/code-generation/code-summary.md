@@ -353,6 +353,57 @@ page is 75,322 bytes compressed.
 - `unit-test-instructions.md` is part of the approved plan and still says 12 tests for the gate and 6 end-to-end tests; there are now 20 and 8.
 - The first password is replaced, but the old one stays in the history of the browser it was typed in until that entry is cleared. It no longer opens anything once this is deployed.
 
+## The rehearsals (Step 19)
+
+Built on 2026-11-27 for the first of the rehearsal pull requests. Nothing was
+deployed, and no workflow was started, while it was built. Step 19 is not
+finished: it ends with the seventh pull request.
+
+**What was built.**
+
+- **Two switches for restoring the database**, in `infra/environment/variables.tf`, both off by default and refused in production. `restored_copy_time` (a moment in UTC, to the second) makes a second database, `<prefix>-db-restored`, restored from the first to that moment; `use_restored_copy` gives the server and the change runner the copy's address, and is refused unless the copy exists. The copy is in `infra/modules/database/main.tf`: the first database's class, subnets, security group, settings group and certificate authority; encrypted, private, signed in to by AWS identity; no deletion protection, no final snapshot, no protection against removal; its own declared log group. The first database's resource is not edited at all.
+- **Sign-in to the copy.** Sign-in by AWS identity is granted per database. While the copy exists, each function's role names both databases (`infra/modules/server/main.tf`); the copy's is added in the run that creates it, one pull request before anything is pointed at it. With no copy, each policy's text is the same, to the character, as before.
+- **Terraform tests**, `infra/environment/tests/restored-copy.tftest.hcl`, seven runs with the stand-in provider: both off (no copy, the first database's address, the policy unchanged); a moment set (the copy with the right source, moment and settings; both functions still on the first database; both roles allowed on both); both set (both functions given the copy's address); production refuses a copy; production refuses to use one; using a copy that does not exist is refused; a moment not written in UTC is refused. The run for the address was seen to fail when the switch was deliberately broken, and passed again when it was put right.
+- **The workflow `prove-identity-limits`** (`.github/workflows/prove-identity-limits.yml`), started by hand on `aws-migration`. It takes the test identity as `deliver` does and tries to tag production's server function, to set the budget's first notification to the values it has, and to set the trust definition of its own role to the one it has. It prints each attempt's name and `refused`, `NOT refused` or `could not tell`, and fails unless all three were refused.
+- **`infra/environment/test.tfvars`**: `alarms` and `forced_failure` are on, each with a dated line saying it goes back.
+- **`docs/operations.md`**: procedure 4 is rewritten around the two switches, with what they do not do; procedure 8 names the new workflow.
+- **Records**: `docs/records/going-back.md` is filled in. `docs/records/measured-speeds.md` has two of its six rows.
+
+**Not built, and why.** The deliberately failing database change is not in
+the tree, as planned. It also cannot be added the way the plan describes: a
+pull request that adds any file to `db-migrate/migrations/` fails its own
+`code` check. The integration tests apply every file there to an empty
+database and expect exactly the first; and the check "Compatibility with
+every version in reach" runs the tests of the Release in production against
+the pull request's files, and those tests expect exactly the first as well.
+The second point will stop the first Unit that adds a real database change,
+and needs its own step. How the failing deployment is rehearsed instead is
+for the maintainer to decide.
+
+Run on 2026-11-27:
+
+| Command | Result |
+|---------|--------|
+| `terraform -chdir=infra/environment test`, before any change | 8 runs passed, 0 failed, exit 0 |
+| `terraform fmt -check -recursive infra` | Clean, exit 0 |
+| `terraform -chdir=infra/environment validate` | Valid, exit 0 |
+| `terraform -chdir=infra/setup validate` | Valid, exit 0 |
+| `terraform -chdir=infra/environment test` | 15 runs passed, 0 failed, exit 0 |
+| `terraform -chdir=infra/setup test` | 3 runs passed, 0 failed, exit 0 |
+| `npm run check` | Exit 0: format, lint, type check, 195 tests passed in 26 files with coverage (lines 91.68%, 761 of 830), build, repository checks (785 files) |
+
+The page is 75,321 bytes compressed; the built gate is 6,377 bytes.
+
+**Not verified, for this step.**
+
+- Whether AWS accepts the copy as written: the restore itself, the settings given with it, and how long it takes. The stand-in provider checks the configuration's shape, not AWS's answer. The fourth pull request is the first real attempt.
+- Whether a later run, with the moment unchanged, leaves the copy alone. It should: nothing about the copy is set that a restore makes differ.
+- Whether the test identity's outer limit allows the restore and the removal. It allows every RDS action on names under `vd-test-`, so it should.
+- Checkov on the copy: not installed here. The copy carries the first database's settings or its exceptions, and one of its own, for deletion protection.
+- The workflow `prove-identity-limits` has never run. Its way of telling a refusal from another failure was read, not tried: the developer's session may not run a shell script of its own.
+- Whether AWS refuses a budget notification set to its own values with an error of its own before it checks permission. If it does, that attempt reads `could not tell`.
+- That the fifth and sixth pull requests take effect in the running site. They should: the deploy step publishes a new version of the server after Terraform has changed the function's settings, and moves the live name to it.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.
@@ -369,6 +420,6 @@ page is 75,322 bytes compressed.
 
 ## Carried forward
 
-- The rehearsals (going back, a failing deployment, a restore, the alarm proofs), the cold-start and page-speed measurements, and the hand procedures in `docs/operations.md` can only be done after the first deployment. Their records under `docs/records/` are empty.
+- The rehearsals (going back, a failing deployment, a restore, the alarm proofs), the cold-start and page-speed measurements, and the hand procedures in `docs/operations.md` can only be done after the first deployment. Going back was rehearsed on 2026-11-27 and its record is filled in; the speeds record has two of six rows; the other three records under `docs/records/` are empty until Step 19's sequence is done.
 - `code-generation-plan.md` points to `code-generation-questions.md` for four earlier answers; that file now holds only the plan approval. The answers are in the decision log and in the plan itself.
 - The developer made one edit through a shell one-off, against the working rule for file edits. The file's content is as intended.

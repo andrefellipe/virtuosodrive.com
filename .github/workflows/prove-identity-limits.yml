@@ -1,0 +1,129 @@
+# Proves the outer limit of the pipeline's test identity (security design S3;
+# docs/operations.md, procedure 8). Started by hand. It takes the test
+# identity exactly as "deliver" does and tries three things that identity
+# must not be able to do. AWS must refuse each one.
+#
+# Each attempt is chosen so that it changes nothing of substance if it is
+# wrongly allowed: a tag named for the rehearsal, a notification set to the
+# values it already has, a trust definition set to the one it already has.
+#
+# What is printed: each attempt's name and "refused", "NOT refused" or
+# "could not tell". Nothing AWS answers is printed except the kind of error,
+# because its messages carry the account's number.
+name: prove-identity-limits
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  prove:
+    name: Three attempts the test identity must be refused
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # To ask GitHub for the token the identity is taken with. Nothing of
+      # the repository is read: no checkout, no other permission.
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - name: Only on the integration branch, the one branch that may take the test identity
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/aws-migration" ]; then
+            echo "::error::Start this workflow on the branch aws-migration. Nothing was tried."
+            exit 1
+          fi
+
+      - name: Take the test environment's identity (one hour, no stored keys)
+        uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TEST }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Three attempts, each of which AWS must refuse
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
+
+          FAILED=0
+
+          # Runs one attempt and prints its name and its result, nothing else.
+          # "refused" only when AWS says the identity is not allowed. Any
+          # other failure (a wrong name, a missing resource, a mistyped
+          # command) proves nothing and counts as "could not tell".
+          attempt() {
+            local name="$1"
+            shift
+            local answer result kind
+            if answer="$("$@" 2>&1)"; then
+              result="NOT refused"
+              FAILED=1
+            elif grep -Eq 'AccessDenied|UnauthorizedOperation|is not authorized to perform' <<< "${answer}"; then
+              result="refused"
+            else
+              kind="$(sed -nE 's/.*An error occurred \(([A-Za-z0-9.]+)\) when calling the ([A-Za-z0-9]+) operation.*/\1 from \2/p' <<< "${answer}" | head -n 1)"
+              result="could not tell (${kind:-the command failed before AWS answered})"
+              FAILED=1
+            fi
+            echo "${name}: ${result}" | tee -a "${GITHUB_STEP_SUMMARY}"
+            LAST_RESULT="${result}"
+          }
+
+          # 1. A production resource. Harmless if allowed: one tag, named for
+          #    this rehearsal, which is taken off again below.
+          PRODUCTION_FUNCTION="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:vd-prod-server"
+          attempt "Tag a production resource" \
+            aws lambda tag-resource --resource "${PRODUCTION_FUNCTION}" --tags rehearsal=identity-limits
+          if [ "${LAST_RESULT}" = "NOT refused" ]; then
+            if aws lambda untag-resource --resource "${PRODUCTION_FUNCTION}" --tag-keys rehearsal > /dev/null 2>&1; then
+              echo "The tag was taken off again." | tee -a "${GITHUB_STEP_SUMMARY}"
+            else
+              echo "The tag could NOT be taken off again: production's server function carries the tag \"rehearsal\"." | tee -a "${GITHUB_STEP_SUMMARY}"
+            fi
+          fi
+
+          # 2. The budget's notification. Harmless if allowed: the first
+          #    notification of infra/setup/budget.tf, set to the values it
+          #    already has.
+          NOTIFICATION="NotificationType=ACTUAL,ComparisonOperator=GREATER_THAN,Threshold=80,ThresholdType=PERCENTAGE"
+          attempt "Change the budget's notification" \
+            aws budgets update-notification --account-id "${ACCOUNT_ID}" --budget-name vd-monthly \
+            --old-notification "${NOTIFICATION}" --new-notification "${NOTIFICATION}"
+
+          # 3. The trust definition of the test identity's own role: who may
+          #    take it. Harmless if allowed: it is set to the definition it
+          #    already has. That definition is read from AWS if the identity
+          #    may read it. It should not be able to, and then the same
+          #    definition is written out here as infra/setup/identities.tf
+          #    defines it. The read is reported and does not decide the
+          #    run; the write does.
+          TRUST_FILE="${RUNNER_TEMP}/trust.json"
+          if aws iam get-role --role-name vd-test-deploy --query Role.AssumeRolePolicyDocument --output json > "${TRUST_FILE}" 2> /dev/null; then
+            echo "Read the trust definition of its own role: allowed (expected: refused)" | tee -a "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "Read the trust definition of its own role: not possible, as expected" | tee -a "${GITHUB_STEP_SUMMARY}"
+            jq -n --arg account "${ACCOUNT_ID}" --arg subject "repo:${GITHUB_REPOSITORY}:ref:refs/heads/aws-migration" '{
+              Version: "2012-10-17",
+              Statement: [{
+                Effect: "Allow",
+                Principal: {Federated: ("arn:aws:iam::" + $account + ":oidc-provider/token.actions.githubusercontent.com")},
+                Action: "sts:AssumeRoleWithWebIdentity",
+                Condition: {StringEquals: {
+                  "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                  "token.actions.githubusercontent.com:sub": $subject
+                }}
+              }]
+            }' > "${TRUST_FILE}"
+          fi
+          attempt "Change the trust definition of its own role" \
+            aws iam update-assume-role-policy --role-name vd-test-deploy --policy-document "file://${TRUST_FILE}"
+          rm -f "${TRUST_FILE}"
+
+          if [ "${FAILED}" -ne 0 ]; then
+            echo "::error::At least one attempt was not refused, or could not be judged. The test identity's limit is not proved."
+            exit 1
+          fi
+          echo "All three attempts were refused." | tee -a "${GITHUB_STEP_SUMMARY}"

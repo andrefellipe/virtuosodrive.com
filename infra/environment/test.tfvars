@@ -5,8 +5,11 @@ vpc_cidr_block = "10.20.0.0/24"
 
 # Alarms and the health check exist in test only while an alarm is being
 # proved: one pull request turns these two on, a second turns them off.
-alarms         = false
-forced_failure = false
+#
+# 2026-11-27: on for the rehearsal of the alarms; goes back to false when it is done.
+alarms = true
+# 2026-11-27: on for the rehearsal of the error-rate alarm; goes back to false when it is done.
+forced_failure = true
 
 deletion_protection = false
 

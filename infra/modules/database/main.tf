@@ -27,10 +27,31 @@ variable "engine_major_version" {
   default     = "18"
 }
 
+variable "restored_copy_time" {
+  description = "When set to a moment (RFC 3339), a second database exists beside the first, restored from the first to that moment. Null: no copy. The environment refuses it in production."
+  type        = string
+  default     = null
+}
+
+variable "use_restored_copy" {
+  description = "Whether the address this module gives out is the restored copy's. Allowed only while the copy exists."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.use_restored_copy || var.restored_copy_time != null
+    error_message = "The restored copy can be used only while it exists: set restored_copy_time as well."
+  }
+}
+
 locals {
   database_name   = "virtuoso"
   master_username = "vdmaster"
   log_group_name  = "/aws/rds/instance/${var.prefix}-db/postgresql"
+
+  restored_identifier     = "${var.prefix}-db-restored"
+  restored_log_group_name = "/aws/rds/instance/${local.restored_identifier}/postgresql"
+  restored_count          = var.restored_copy_time == null ? 0 : 1
 }
 
 resource "aws_db_subnet_group" "this" {
@@ -176,12 +197,95 @@ resource "aws_db_instance" "this" {
   }
 }
 
+# --- The restored copy: exists only while "restored_copy_time" is set ---------
+#
+# A restore never changes the database it reads from: it makes a second one
+# beside it. Nothing here refers to the first database except to read its
+# identifier, so setting or clearing the two switches can add, change or
+# remove only the copy and its log group.
+#
+# The copy holds the first database's contents as they were at the moment
+# named, and with them its users: "app" and "migrator" sign in to it by AWS
+# identity as they do to the first, and the master sign-in in the stored
+# secret is the copy's too. Size, name of the database and engine version are
+# not written here, because a restore takes them from the source.
+#
+# Changing the moment replaces the copy. Leaving it unchanged changes nothing.
+
+# Declared, like the first database's, so that the copy's log is kept 30 days
+# and is removed with the copy.
+resource "aws_cloudwatch_log_group" "restored_postgresql" {
+  # checkov:skip=CKV_AWS_158: As for the first database's log group.
+  # checkov:skip=CKV_AWS_338: As for the first database's log group.
+  count             = local.restored_count
+  name              = local.restored_log_group_name
+  retention_in_days = 30
+}
+
+resource "aws_db_instance" "restored" {
+  # checkov:skip=CKV_AWS_157: One Availability Zone, as the database it is restored from (reliability design R7).
+  # checkov:skip=CKV_AWS_118: As the database it is restored from: no enhanced monitoring.
+  # checkov:skip=CKV_AWS_353: As the database it is restored from: no Performance Insights.
+  # checkov:skip=CKV_AWS_354: Performance Insights is off, so it has no key.
+  # checkov:skip=CKV_AWS_293: A copy made to rehearse or perform a restore, in the test environment only (the environment refuses it in production). It is removed by clearing one variable, which deletion protection would refuse.
+  # checkov:skip=CKV2_AWS_60: As the database it is restored from: one Region by decision (technology decisions T1).
+  count = local.restored_count
+
+  identifier     = local.restored_identifier
+  engine         = aws_db_instance.this.engine
+  instance_class = aws_db_instance.this.instance_class
+
+  restore_to_point_in_time {
+    source_db_instance_identifier = aws_db_instance.this.identifier
+    restore_time                  = var.restored_copy_time
+  }
+
+  storage_type      = "gp3"
+  storage_encrypted = true
+
+  iam_database_authentication_enabled = true
+  parameter_group_name                = aws_db_parameter_group.this.name
+  db_subnet_group_name                = aws_db_subnet_group.this.name
+  vpc_security_group_ids              = [var.security_group_id]
+  publicly_accessible                 = false
+  multi_az                            = false
+  ca_cert_identifier                  = "rds-ca-rsa2048-g1"
+
+  backup_retention_period    = 7
+  backup_window              = "06:00-06:30"
+  maintenance_window         = "sun:07:00-sun:08:00"
+  auto_minor_version_upgrade = true
+  copy_tags_to_snapshot      = true
+  apply_immediately          = false
+
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+
+  # Unlike the first database: the copy must be removable in one step, by
+  # clearing the variable, and leaves no snapshot and no backups behind.
+  deletion_protection      = false
+  skip_final_snapshot      = true
+  delete_automated_backups = true
+
+  depends_on = [aws_cloudwatch_log_group.restored_postgresql]
+}
+
+locals {
+  # The database the server and the change runner are pointed at.
+  in_use = var.use_restored_copy ? one(aws_db_instance.restored) : aws_db_instance.this
+}
+
 output "address" {
-  value = aws_db_instance.this.address
+  description = "The address of the database in use: the first one's, or the restored copy's while use_restored_copy is on."
+  value       = local.in_use.address
 }
 
 output "port" {
-  value = aws_db_instance.this.port
+  value = local.in_use.port
+}
+
+output "original_address" {
+  description = "The first database's address, whichever is in use."
+  value       = aws_db_instance.this.address
 }
 
 output "database_name" {
@@ -193,8 +297,30 @@ output "identifier" {
 }
 
 output "resource_id" {
-  description = "The identifier sign-in by AWS identity is granted on."
+  description = "The identifier sign-in by AWS identity is granted on, for the first database."
   value       = aws_db_instance.this.resource_id
+}
+
+output "sign_in_resource_ids" {
+  description = "The identifiers sign-in by AWS identity is granted on: the first database's, and the restored copy's while it exists. The copy's is included from the run that creates it, one run before anything is pointed at it, so the permission is in place by then."
+  value       = concat([aws_db_instance.this.resource_id], aws_db_instance.restored[*].resource_id)
+}
+
+output "restored_copy" {
+  description = "What a test needs to read about the restored copy; null when there is none."
+  value = one([for copy in aws_db_instance.restored : {
+    identifier                          = copy.identifier
+    source_db_instance_identifier       = one(copy.restore_to_point_in_time).source_db_instance_identifier
+    restore_time                        = one(copy.restore_to_point_in_time).restore_time
+    address                             = copy.address
+    storage_encrypted                   = copy.storage_encrypted
+    iam_database_authentication_enabled = copy.iam_database_authentication_enabled
+    publicly_accessible                 = copy.publicly_accessible
+    deletion_protection                 = copy.deletion_protection
+    skip_final_snapshot                 = copy.skip_final_snapshot
+    parameter_group_name                = copy.parameter_group_name
+    db_subnet_group_name                = copy.db_subnet_group_name
+  }])
 }
 
 output "master_secret_arn" {
@@ -218,9 +344,12 @@ output "parameter_group_name_prefix" {
 # The settings group is not listed: the end of its name is generated and not
 # known until it exists. Its name is checked by parameter_group_name_prefix.
 output "names" {
-  value = [
-    aws_db_instance.this.identifier,
-    aws_db_subnet_group.this.name,
-    aws_secretsmanager_secret.master.name,
-  ]
+  value = concat(
+    [
+      aws_db_instance.this.identifier,
+      aws_db_subnet_group.this.name,
+      aws_secretsmanager_secret.master.name,
+    ],
+    aws_db_instance.restored[*].identifier,
+  )
 }
