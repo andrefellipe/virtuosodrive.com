@@ -16,11 +16,6 @@ failing_change = false
 
 deletion_protection = false
 
-# 2026-11-27: the rehearsal of restoring the database (docs/operations.md,
-# procedure 4). A copy of the test database as it was at this moment exists
-# beside the first while this line is here.
-restored_copy_time = "2026-11-27T16:30:00Z"
-
 # Replaced on 2026-11-26: the first password page wrote what was typed into the address, and so into one browser's history.
 access_password_version = 2
 

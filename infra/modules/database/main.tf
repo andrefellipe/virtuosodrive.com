@@ -274,27 +274,42 @@ resource "aws_db_instance" "restored" {
   # without the copy. A wait that ends by itself does neither: Terraform
   # records what it started, releases its lock and fails the run.
   #
-  # Why 30 minutes for the restore. The limit has to leave room on both
+  # Why 40 minutes for the restore. The limit has to leave room on both
   # sides, for a restore that fails and for one that succeeds at the last
-  # moment. In the two runs of 2026-11-27 the apply began 1 to 2 minutes into
+  # moment. In the runs of 2026-11-27 the apply began 1 to 2 minutes into
   # the job, and everything after it (the rest of the deployment, installing
   # the browsers, the end-to-end tests, the measurement) took about 4
   # minutes. At worst that remainder is about 12: the change runner alone
   # may take 5.5, and each smoke check retries. So a restore given up on
-  # fails the run by about minute 32, and one that finishes just inside the
-  # limit still leaves the job about 28 minutes for a remainder of 4 to 12.
-  # With the earlier 40 minutes that margin was 18, too close to the
-  # remainder's worst case for a stop that can fall in the middle of the
-  # switch step. The job's AWS sign-in also lasts one hour from its first
-  # minute. A restore usually takes 10 to 25 minutes, so 30 is not expected
-  # to cut a healthy one short. Removing the copy is a run of its own and
-  # usually takes under 10 minutes.
+  # fails the run by about minute 42, and one that finishes just inside the
+  # limit still leaves the job about 18 minutes for a remainder of 4 to 12.
+  # The job's AWS sign-in also lasts one hour from its first minute.
+  # Removing the copy is a run of its own and usually takes under 10 minutes.
+  #
+  # Measured on 2026-11-27 (docs/records/restore.md): the copy was available
+  # 33.5 minutes after the create began. The restore itself took 14 minutes.
+  # Terraform counts the copy as made only when AWS reports it available,
+  # and AWS first takes the copy's first backup, which took a further 17.6
+  # minutes. A limit of 30 minutes, tried that day, ended the wait during
+  # that backup and failed a healthy restore; 40 leaves 6.5 minutes over the
+  # one measurement there is. If a restore overruns 40, the job's own limit
+  # has to be raised with this one, not this one alone.
+  #
+  # The backup settings written above do not decide that. For a restore to a
+  # moment, version 6.74.0 of the AWS provider sends neither
+  # "backup_retention_period" nor "backup_window" to AWS, at the restore or
+  # after it (read in the provider's source, internal/service/rds/instance.go,
+  # on 2026-11-27; the same on its main branch). AWS then gives the copy its
+  # source's setting, 7 days, which is what the 7 above happens to match.
+  # Writing 0 here would not stop the first backup: the copy would still be
+  # made with 7, and every later run would try to change it to 0.
   #
   # Changing the moment replaces the copy: a removal and a restore in one
-  # run, which together may wait up to 60 minutes. Procedure 4 of
+  # run, which together may wait up to 70 minutes, longer than the job's 60.
+  # Procedure 4 of
   # docs/operations.md therefore changes the moment in two pull requests.
   timeouts {
-    create = "30m"
+    create = "40m"
     delete = "30m"
   }
 

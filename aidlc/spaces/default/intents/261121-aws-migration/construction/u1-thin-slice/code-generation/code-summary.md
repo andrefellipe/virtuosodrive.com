@@ -607,6 +607,108 @@ threshold was not touched. `scripts/src/measure.ts` is covered in full.
 - `unit-test-instructions.md` is part of the approved plan and was not edited; its count for the scripts (18) is further behind.
 - One command was refused by the session's own guard (a one-line shell trial of the script's idioms) and was not retried another way; hence the second point under "Not verified".
 
+## The restore rehearsal's fault, and why its planned fix is not built (Step 23)
+
+Worked on 2026-11-27 on the branch `u1-rehearsal-7`. Nothing was committed,
+pushed or deployed, and no workflow was started. **Step 23 is not finished
+and its box is not ticked:** the fix the plan describes does not work with
+the AWS provider this project pins, so it was not built, and it comes back
+for a decision.
+
+**What the rehearsal showed.** Pull request 25 set `restored_copy_time`;
+its `deliver` run 46042786560 began creating the copy at 17:34:39 UTC. AWS
+restored it by 17:48:21 (14 minutes), restarted it, and at 17:50:22 began
+the copy's first backup. At 18:04:42 Terraform's 30-minute limit ended the
+wait (last state: backing-up) and the run failed; the rest of the
+deployment was skipped. The site kept answering from the first database
+with Release `b8fcbeb`.
+
+**Why writing `backup_retention_period = 0` on the copy does not fix it.**
+Read on 2026-11-27 in the provider's source at the pinned version
+(`hashicorp/terraform-provider-aws`, tag `v6.74.0`,
+`internal/service/rds/instance.go`), and the same on its main branch:
+
+- For a restore to a moment, the provider builds its request to AWS without `backup_retention_period` and without `backup_window`, and does not set them in a change after the restore either. (For a restore from a snapshot it does set them, in a change made after the copy is available.)
+- AWS's own interface for this restore does accept a backup retention, 0 included, and says that without one it "uses existing setting", the source's (read in the AWS SDK the provider uses, `service/rds` v1.131.1). So AWS can make a copy with no backups; this provider cannot ask for one.
+- The copy would therefore still be made with 7 days, still take its first backup, and Terraform would still wait for it. Afterwards Terraform's record would say 7 where the file says 0, and every later run would try to change the copy; with `apply_immediately = false` that change waits for the maintenance window, so the difference would come back at each run.
+- `copy_tags_to_snapshot` is sent with the restore and is harmless. `delete_automated_backups` is used only when the copy is removed and is right as it is.
+- Checkov has a rule on backup retention (`CKV_AWS_133`); no exception was recorded, because the setting was not changed. Checkov is not installed on this machine, so this is from its rule list, not from a run.
+
+A Terraform test asserting 0 days would have passed, since it reads the
+plan and not AWS. It was not written: it would have shown as proved
+something that is false in the account.
+
+**What was built in this round**, all of it true whichever fix is chosen:
+
+- `infra/environment/test.tfvars`: `restored_copy_time` and its comment are removed. Merged, the run removes the incomplete copy and its log group, and takes the copy out of both functions' permission to sign in. Nothing else changes.
+- `infra/modules/database/main.tf`: the comment beside the copy's time limits now gives the measured facts and says why the backup settings there do not decide the first backup. No setting is changed; the limit stays at 30 minutes. The first database is untouched.
+- `docs/operations.md`, procedure 4: step 3 gives the measured 14 minutes, says the first backup is waited for too, and says plainly that the step is expected to fail at the limit until this is fixed; "When the restore takes too long" names what happened on 2026-11-27; step 8 says that the password page in place of JSON means the AWS sign-in has expired, and why.
+- `docs/records/restore.md`: the first attempt, with its times and where each was read; the two tables of the rehearsal proper are left empty for the next attempt.
+
+Not built, because they depend on the fix: the sentence in procedure 4 that
+the copy has no backups of its own, and the Terraform test.
+
+**Ways forward, for the maintainer to choose; none is built.**
+
+1. *A longer limit.* Let the wait cover the restore and the first backup. How long the first backup takes is not known (14 minutes and unfinished). AWS's events for `vd-test-db-restored` should show when it ended; they are worth reading before the copy is removed. The job's 60 minutes and the one-hour AWS sign-in are the ceiling, so this works only if restore and backup together stay well under about 45 minutes.
+2. *Make the copy outside Terraform's wait.* A workflow started by hand asks AWS for the restore with no backups (which AWS accepts), and Terraform then takes the finished copy into its record. It gives what the plan wanted, at the price of a second way of creating a resource and more permission for the test identity.
+3. *Accept two runs.* Leave the settings; the first run fails at the limit as it did, and once AWS reports the copy available a second step brings it into use. Terraform marks the copy incomplete after a failed wait and would replace it, so this needs the mark removed by hand, which the pipeline has no step for.
+4. *Wait for the provider.* Its main branch has the same gap today.
+
+**What the maintainer chose (2026-11-27): the first, a longer limit.** AWS's
+events show the first backup finished at 18:08:00, 17.6 minutes after it
+began, so the copy was available 33.5 minutes after Terraform began creating
+it. The plan was amended and approved, and the conductor made these edits on
+top of the above:
+
+- `infra/modules/database/main.tf`: the copy's create limit is 40 minutes, as before Step 22 shortened it; the comment gives the arithmetic (given up at about minute 42 of the job's 60; 18 minutes left after a last-moment success, for a remainder of 4 to 12) and says that a restore overrunning 40 means raising the job's limit with it.
+- `infra/environment/tests/restored-copy.tftest.hcl`: asserts 40 minutes.
+- `docs/operations.md`, procedure 4, step 3: 40 minutes, with the measured 14, 18 and 34; the sentence that the step is expected to fail is removed.
+- `docs/records/restore.md`: the backup's length and the fix, under "Notes".
+
+The margin is 6.5 minutes over one measurement. That is not verified until
+the second attempt runs.
+
+**Other results of this round so far, all in test.**
+
+| What | Pull request and run | Result |
+|------|----------------------|--------|
+| The failing deployment (Step 19, as amended) | Pull request 23, run 46033316601 | Passed. The run failed at the database changes with the rehearsal's message and recorded `notPutInPlace`; test kept Release `a525fc6`; the page answered; `installedAt` unchanged |
+| The switches off again | Pull request 24 | Release `b8fcbeb` deployed successfully; the alarms are gone from test |
+| An identity taken from a pull request's checks | Throwaway pull request 26, run 46042916178 | Refused for both identities: "Not authorized to perform sts:AssumeRoleWithWebIdentity". Closed, never merged |
+| The paced measurement (Step 22) | The run in test after pull request 22 | 0 of 100 failed; middle 28 ms; 95th 36 ms |
+| The restore | Pull request 25, run 46042786560 | Failed, as above |
+
+**Open, seen once.** At 18:05:45 UTC on 2026-11-27 one call to site
+information, the first after about an hour of quiet, answered 500 after
+2.3 s with "timeout expired", on a cold start. The next four answered 200.
+Not investigated. It falls inside the server's 3-second deadline for the
+database, so it may be a first connection that was slow to open; the
+measurement of the first call after 30 minutes of quiet, which Step 19
+owes, is where to look again.
+
+### Run on 2026-11-27, fourth round
+
+| Command | Result |
+|---------|--------|
+| `npm run check` | Exit 0: format, lint, type check, 211 tests passed in 27 files with coverage (lines 92.1%, 793 of 861; statements 91.72%; branches 87.9%; functions 91.03%), build (page 75,325 bytes compressed, gate 6,377 bytes), repository checks (798 files) |
+| `terraform fmt -check -recursive infra` | Clean, exit 0 |
+| `terraform -chdir=infra/setup validate` | Valid, exit 0 |
+| `terraform -chdir=infra/setup test` | 3 passed, 0 failed, exit 0 |
+| `terraform -chdir=infra/environment validate` | Valid, exit 0 |
+| `terraform -chdir=infra/environment test` | 23 passed, 0 failed, exit 0 |
+
+No test was added, removed or changed in this round, and the 80% threshold
+was not touched.
+
+**Not verified, for this round.**
+
+- That AWS gives a copy restored to a moment its source's backup retention. It is what AWS's interface documents and what the first backup at 17:50:22 suggests; the copy's own setting was not read from the account.
+- How long the copy's first backup takes.
+- Whether the failed run recorded a Deployment as `notPutInPlace`, as procedure 4 says a run ended by the limit does. The run's steps show "Deploy to test" failed and the later steps skipped; the Deployment's record was not read.
+- The provider's behaviour was read in its source, not tried against AWS.
+- Checkov was not run here.
+
 ## Not verified
 
 - Whether AWS accepts the IAM policies, the tag conditions and the Route 53 record-name condition.
