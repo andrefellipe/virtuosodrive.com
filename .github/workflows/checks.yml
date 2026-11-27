@@ -154,7 +154,42 @@ jobs:
   description:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # THROWAWAY, never merged: a rehearsal that a pull request's checks cannot
+    # take either of the pipeline's identities. Both attempts must be refused.
+    permissions:
+      contents: read
+      id-token: write
     steps:
+      - name: Try to take the test identity (must be refused)
+        id: try_test
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TEST }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 900
+          retry-max-attempts: 1
+      - name: Try to take the production identity (must be refused)
+        id: try_production
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_PRODUCTION }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 900
+          retry-max-attempts: 1
+      - name: Report the two attempts
+        env:
+          TEST: ${{ steps.try_test.outcome }}
+          PRODUCTION: ${{ steps.try_production.outcome }}
+        run: |
+          echo "test identity: ${TEST}; production identity: ${PRODUCTION}" | tee -a "${GITHUB_STEP_SUMMARY}"
+          if [ "${TEST}" = "failure" ] && [ "${PRODUCTION}" = "failure" ]; then
+            echo "Both refused, as designed."
+          else
+            echo "::error::An identity was NOT refused to a pull request's checks."
+            exit 1
+          fi
       - name: The pull request names its Unit
         env:
           TITLE: ${{ github.event.pull_request.title }}
