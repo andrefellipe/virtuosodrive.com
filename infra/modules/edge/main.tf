@@ -268,13 +268,22 @@ data "aws_cloudfront_cache_policy" "disabled" {
 # To the server: query strings forwarded, cookies not forwarded, and exactly
 # these five request headers. The last two were added with Unit U3: without
 # If-None-Match the server never sees the version a page holds and can never
-# answer "unchanged"; without Accept-Encoding it never learns that it may
-# compress. Neither carries a credential. Nothing is kept at the edge for
-# /v1, so listing them changes what the server is told and nothing else. A
-# test asserts the list, so that a later edit cannot drop one unnoticed.
+# answer "unchanged"; without X-Accept-Gzip it never learns that a caller can
+# read a compressed answer. Neither carries a credential. Nothing is kept at
+# the edge for /v1, so listing them changes what the server is told and
+# nothing else. A test asserts the list, so that a later edit cannot drop one
+# unnoticed.
+#
+# X-Accept-Gzip is a header of the project's own, which the page and the
+# pipeline's checks send with the value 1. The standard header for this,
+# Accept-Encoding, is not in the list and must not be put there: AWS refuses
+# it in this kind of rule. On 2026-11-28 the first deployment of Unit U3 to
+# test stopped at this resource with "The parameter Headers contains
+# Accept-Encoding that is not allowed", and nothing was put in place. The
+# server does not read Accept-Encoding.
 resource "aws_cloudfront_origin_request_policy" "server" {
   name    = "${var.prefix}-server"
-  comment = "Query strings, the request identifier, the version held and the encodings accepted; no cookies"
+  comment = "Query strings, the request identifier, the version held and whether gzip is accepted; no cookies"
 
   cookies_config {
     cookie_behavior = "none"
@@ -282,7 +291,7 @@ resource "aws_cloudfront_origin_request_policy" "server" {
   headers_config {
     header_behavior = "whitelist"
     headers {
-      items = ["X-Request-Id", "Accept", "Content-Type", "If-None-Match", "Accept-Encoding"]
+      items = ["X-Request-Id", "Accept", "Content-Type", "If-None-Match", "X-Accept-Gzip"]
     }
   }
   query_strings_config {

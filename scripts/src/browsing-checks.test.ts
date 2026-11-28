@@ -35,8 +35,12 @@ interface Site {
   passesVersionIn: boolean;
   /** Whether the version header comes out through the edge. */
   passesVersionOut: boolean;
-  /** Whether the answer travels compressed. */
+  /** Whether the answer travels compressed for a caller that sends X-Accept-Gzip: 1. */
   compresses: boolean;
+  /** Whether it travels compressed for a caller that does not. */
+  compressesWithoutHeader: boolean;
+  /** The size each form says it had on the way, when the answers say one. */
+  sizes: { compressed: number; plain: number } | null;
   /** The items the 500-item folder answers with. */
   largeCount: number;
   /** The server's own duration for each request, in order; the last repeats. */
@@ -55,6 +59,8 @@ const SOUND: Site = {
   passesVersionIn: true,
   passesVersionOut: true,
   compresses: true,
+  compressesWithoutHeader: false,
+  sizes: null,
   largeCount: 500,
   durations: [40],
   xCache: "Miss from cloudfront",
@@ -156,12 +162,22 @@ function site(changes: Partial<Site> = {}) {
       }
       const duration =
         state.durations[Math.min(folderRequests, state.durations.length) - 1];
+      // The stand-in server reads the header of our own and nothing else.
+      const compressed =
+        headers.get("x-accept-gzip") === "1"
+          ? state.compresses
+          : state.compressesWithoutHeader;
       return respond(200, folder(folderId), {
         ...edge,
         "server-timing": `app;dur=${(duration ?? 0).toFixed(1)}`,
-        ...(state.compresses && headers.get("accept-encoding") === "gzip"
-          ? { "content-encoding": "gzip" }
-          : {}),
+        ...(compressed ? { "content-encoding": "gzip" } : {}),
+        ...(state.sizes === null
+          ? {}
+          : {
+              "content-length": String(
+                compressed ? state.sizes.compressed : state.sizes.plain,
+              ),
+            }),
       });
     }
     return Promise.resolve(
@@ -233,6 +249,24 @@ describe("the smoke check and the folder route", () => {
       "/v1/folders/root",
     ]);
     expect(asked.at(-1)?.headers.get("cookie")).toBe(`vd_access=${PASSWORD}`);
+  });
+
+  it("asks for the top folder as the page does, with X-Accept-Gzip: 1, and sends that header to nothing else", async () => {
+    const { fetchSite, asked } = site();
+
+    await smoke(fetchSite, true);
+
+    expect(
+      asked.map((request) => [
+        request.path,
+        request.headers.get("x-accept-gzip"),
+      ]),
+    ).toEqual([
+      ["/v1/health", null],
+      ["/v1/site-information", null],
+      ["/", null],
+      ["/v1/folders/root", "1"],
+    ]);
   });
 
   it("passes on an empty top folder, as production has until the migration", async () => {
@@ -319,29 +353,107 @@ describe("the gate: unchanged through the whole path", () => {
 });
 
 describe("the gate: compressed through the whole path", () => {
-  it("passes when the 500-item folder arrives compressed and unpacks to its list", async () => {
+  it("passes when the 500-item folder arrives compressed for a request with X-Accept-Gzip: 1, plain for one without, and both unpack to its list", async () => {
     const { options, asked } = site();
 
     const result = await gateCompressed(options);
 
     expect(result.ok).toBe(true);
-    expect(asked.at(-1)?.path).toBe(`/v1/folders/${LARGE}`);
-    expect(asked.at(-1)?.headers.get("accept-encoding")).toBe("gzip");
+    expect(result.report[0]).toContain("arrived compressed with gzip");
+    expect(result.report[0]).toContain("plain when asked without");
+    const last = asked.slice(-2);
+    expect(last.map((request) => request.path)).toEqual([
+      `/v1/folders/${LARGE}`,
+      `/v1/folders/${LARGE}`,
+    ]);
+    // First as the page asks; then as a caller that says nothing of gzip.
+    expect(last[0]?.headers.get("x-accept-gzip")).toBe("1");
+    expect(last[1]?.headers.get("x-accept-gzip")).toBeNull();
+    expect(last[1]?.headers.get("accept-encoding")).toBe("identity");
   });
 
-  it("fails when the answer does not arrive compressed", async () => {
+  it("fails when the answer to the request with the header does not arrive compressed", async () => {
     const result = await gateCompressed(site({ compresses: false }).options);
 
     expect(result.ok).toBe(false);
+    expect(result.failures).toHaveLength(1);
     expect(result.failures[0]).toContain('content encoding "none"');
+    expect(result.failures[0]).toContain("expected gzip");
   });
 
-  it("fails when the answer unpacks to the wrong list", async () => {
+  it("fails when the answer to the request without the header arrives compressed", async () => {
+    const result = await gateCompressed(
+      site({ compressesWithoutHeader: true }).options,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toContain(
+      'asked without X-Accept-Gzip, the answer arrived with content encoding "gzip", expected none',
+    );
+  });
+
+  it("reports the two sizes on the way when both answers say one, and fails when the one called compressed is not the smaller", async () => {
+    const smaller = await gateCompressed(
+      site({ sizes: { compressed: 9_000, plain: 60_000 } }).options,
+    );
+    const notSmaller = await gateCompressed(
+      site({ sizes: { compressed: 60_000, plain: 60_000 } }).options,
+    );
+    const unsaid = await gateCompressed(site().options);
+
+    expect(smaller.ok).toBe(true);
+    expect(smaller.report[0]).toContain(
+      "On the way: 9000 bytes compressed, 60000 plain.",
+    );
+    expect(notSmaller.failures).toEqual([
+      "the answer called compressed was 60000 bytes on the way and the plain one 60000: it is not the smaller",
+    ]);
+    expect(unsaid.ok).toBe(true);
+    expect(unsaid.report[0]).toContain("the two sizes were not compared");
+  });
+
+  it("fails when either answer unpacks to the wrong list", async () => {
     const result = await gateCompressed(site({ largeCount: 499 }).options);
 
     expect(result.failures).toEqual([
-      "the answer unpacked to 499 items, expected 500",
+      "the compressed answer unpacked to 499 items, expected 500",
+      "the plain answer unpacked to 499 items, expected 500",
     ]);
+  });
+
+  it("fails when either request is not answered 200", async () => {
+    // The walk to the folder makes no counted request; these are the two.
+    const first = await gateCompressed(site({ statusAt: { 1: 503 } }).options);
+    const second = await gateCompressed(site({ statusAt: { 2: 503 } }).options);
+
+    expect(first.failures).toEqual([
+      "asked with X-Accept-Gzip, the folder answered 503, expected 200",
+    ]);
+    expect(second.failures).toEqual([
+      "asked without X-Accept-Gzip, the folder answered 503, expected 200",
+    ]);
+  });
+});
+
+describe("what every gate sends", () => {
+  it("sends X-Accept-Gzip: 1 with every request for a folder, as the page does, but for the one plain request", async () => {
+    const { options, asked } = site();
+
+    await gateUnchanged(options);
+    await gateNotStored(options);
+    await gateFolderSpeed(options);
+    await gateCompressed(options);
+
+    const folders = asked.filter((request) =>
+      request.path.startsWith("/v1/folders/"),
+    );
+    const without = folders.filter(
+      (request) => request.headers.get("x-accept-gzip") !== "1",
+    );
+    expect(folders.length).toBeGreaterThan(SPEED_CALLS);
+    expect(without).toHaveLength(1);
+    expect(without[0]).toBe(folders.at(-1));
   });
 });
 

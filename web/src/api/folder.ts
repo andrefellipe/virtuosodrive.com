@@ -99,6 +99,20 @@ export function parseFolder(body: unknown): FolderAnswer | undefined {
 }
 
 /**
+ * Sent with every request for a folder: it tells the server that this caller
+ * can read a gzip answer, which every browser can. The server compresses a
+ * folder's answer only for a caller that sends it. It is a header of the
+ * project's own because the browser's standard one does not reach the
+ * server (the edge is not allowed to pass it on). The browser unpacks a
+ * compressed answer by itself, so nothing else in the page knows of this.
+ * The call is to the page's own address, so the extra header causes no
+ * request of its own to ask permission first.
+ */
+export const ACCEPTS_GZIP: Readonly<Record<string, string>> = {
+  "X-Accept-Gzip": "1",
+};
+
+/**
  * Asks the server for a folder: `root` for "All", or a folder's identifier.
  * With the version held, the outcome may be "unchanged" (design W3).
  */
@@ -111,6 +125,9 @@ export function readFolder(
     `/v1/folders/${encodeURIComponent(folderId)}`,
     parseFolder,
     environment,
-    heldVersion === undefined ? {} : { heldVersion },
+    {
+      headers: ACCEPTS_GZIP,
+      ...(heldVersion === undefined ? {} : { heldVersion }),
+    },
   );
 }

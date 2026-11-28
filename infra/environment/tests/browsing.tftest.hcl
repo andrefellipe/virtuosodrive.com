@@ -2,7 +2,9 @@
 # alone, with a stand-in for AWS: no account is touched.
 #
 #   - The edge passes exactly five request headers to the server, and no
-#     cookie (infrastructure specification, "The one change").
+#     cookie (infrastructure specification, "The one change", as corrected
+#     by Step 18 of the Unit's code plan: X-Accept-Gzip in place of
+#     Accept-Encoding, which AWS refuses in this rule).
 #   - The two saved searches for browsing, and the dashboard's view drawn
 #     from the log, exist under the environment's prefix (monitoring design).
 
@@ -43,8 +45,15 @@ run "the_edge_passes_exactly_five_headers_to_the_server" {
   }
 
   assert {
-    condition     = module.edge.server_request_headers == toset(["X-Request-Id", "Accept", "Content-Type", "If-None-Match", "Accept-Encoding"])
-    error_message = "The edge must pass X-Request-Id, Accept, Content-Type, If-None-Match and Accept-Encoding to the server, and nothing else. It passes: ${join(", ", module.edge.server_request_headers)}"
+    condition     = module.edge.server_request_headers == toset(["X-Request-Id", "Accept", "Content-Type", "If-None-Match", "X-Accept-Gzip"])
+    error_message = "The edge must pass X-Request-Id, Accept, Content-Type, If-None-Match and X-Accept-Gzip to the server, and nothing else. It passes: ${join(", ", module.edge.server_request_headers)}"
+  }
+
+  # AWS refuses Accept-Encoding in this kind of rule (2026-11-28): with it in
+  # the list, Terraform's apply fails and nothing is put in place.
+  assert {
+    condition     = !contains([for header in module.edge.server_request_headers : lower(header)], "accept-encoding")
+    error_message = "The edge's rule for headers passed to the server must not list Accept-Encoding: AWS refuses it there. The server is told by X-Accept-Gzip."
   }
 
   assert {

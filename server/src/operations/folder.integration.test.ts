@@ -160,7 +160,7 @@ describe("the folder operation through the server", () => {
       "x-content-type-options": "nosniff",
       "x-request-id": "same-for-every-request",
       etag: makeVersionTag(folder, 1),
-      vary: "Accept-Encoding",
+      vary: "X-Accept-Gzip",
       "server-timing": expect.stringMatching(/^app;dur=\d+\.\d$/),
     });
   });
@@ -357,7 +357,7 @@ describe("the folder operation through the server", () => {
     expect(withSession.headers?.etag).toBe(plain.headers?.etag);
   });
 
-  it("answers 500 ordinary items in 150 kilobytes or less before compression, and compresses them when gzip is accepted", async () => {
+  it("answers 500 ordinary items in 150 kilobytes or less before compression, and compresses them for a caller that sends X-Accept-Gzip: 1", async () => {
     const folder = await workFolder();
     await migrator.query(
       "INSERT INTO items (kind, parent_id, name, position, version, size, content_type) SELECT $1, $2, $3 || n || $4, n, NULL, n * 1000, $5 FROM generate_series(1, 500) AS n",
@@ -371,11 +371,14 @@ describe("the folder operation through the server", () => {
     );
 
     const plain = await ask(folder);
-    const compressed = await ask(folder, {
-      "accept-encoding": "gzip, deflate, br",
-    });
+    const compressed = await ask(folder, { "x-accept-gzip": "1" });
 
     expect((json(plain).items as unknown[]).length).toBe(500);
+    expect(plain.isBase64Encoded).toBeUndefined();
+    expect(plain.headers?.["content-encoding"]).toBeUndefined();
+    // Both say that the answer depends on the header.
+    expect(plain.headers?.vary).toBe("X-Accept-Gzip");
+    expect(compressed.headers?.vary).toBe("X-Accept-Gzip");
     expect(Buffer.byteLength(plain.body as string)).toBeLessThanOrEqual(
       150 * 1024,
     );
@@ -400,10 +403,35 @@ describe("the folder operation through the server", () => {
     ]);
   });
 
-  it("sends a small answer as it is even when gzip is accepted", async () => {
+  it("sends 500 items as they are to a caller that sends only the standard Accept-Encoding, or X-Accept-Gzip with another value", async () => {
+    const folder = await workFolder();
+    await migrator.query(
+      "INSERT INTO items (kind, parent_id, name, position, version, size, content_type) SELECT $1, $2, $3 || n || $4, n, NULL, n * 1000, $5 FROM generate_series(1, 500) AS n",
+      ["file", folder, "Lecture notes ", ".pdf", "application/pdf"],
+    );
+
+    const plain = await ask(folder);
+    const callers: Record<string, string>[] = [
+      { "accept-encoding": "gzip, deflate, br" },
+      { "x-accept-gzip": "0" },
+      { "x-accept-gzip": "true" },
+      { "x-accept-gzip": "" },
+      { "x-accept-gzip": "gzip" },
+    ];
+    for (const headers of callers) {
+      const response = await ask(folder, headers);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.isBase64Encoded).toBeUndefined();
+      expect(response.headers?.["content-encoding"]).toBeUndefined();
+      expect(response.body).toBe(plain.body);
+    }
+  });
+
+  it("sends a small answer as it is even to a caller that sends X-Accept-Gzip: 1", async () => {
     const folder = await workFolder();
 
-    const response = await ask(folder, { "accept-encoding": "gzip" });
+    const response = await ask(folder, { "x-accept-gzip": "1" });
 
     expect(response.statusCode).toBe(200);
     expect(response.isBase64Encoded).toBeUndefined();
@@ -535,7 +563,7 @@ describe("the folder operation through the server", () => {
     let elapsedMs: number;
     try {
       const startedAt = Date.now();
-      stopped = await ask(folder, { "accept-encoding": "gzip" });
+      stopped = await ask(folder, { "x-accept-gzip": "1" });
       elapsedMs = Date.now() - startedAt;
     } finally {
       await postgres.resume();

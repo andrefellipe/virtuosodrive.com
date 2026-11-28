@@ -23,6 +23,9 @@
  * a few times before it is reported as failed.
  */
 
+/** What the page sends with every request for a folder (server/src/http/body.ts). */
+const ACCEPTS_GZIP: Readonly<Record<string, string>> = { "X-Accept-Gzip": "1" };
+
 export interface SmokeCheckOptions {
   /** For example https://test.virtuoso.andrefellipelabs.com */
   baseUrl: string;
@@ -51,13 +54,17 @@ async function get(
   options: SmokeCheckOptions,
   path: string,
   withPassword: boolean,
+  more: Readonly<Record<string, string>> = {},
 ): Promise<Response> {
   return options.fetch(new URL(path, options.baseUrl), {
     method: "GET",
     redirect: "error",
-    headers: withPassword
-      ? { Cookie: `vd_access=${options.accessPassword}` }
-      : {},
+    headers: {
+      ...(withPassword
+        ? { Cookie: `vd_access=${options.accessPassword}` }
+        : {}),
+      ...more,
+    },
     signal: AbortSignal.timeout(REQUEST_LIMIT_MS),
   });
 }
@@ -131,7 +138,8 @@ async function checkPage(options: SmokeCheckOptions): Promise<string[]> {
  * that they are a list.
  */
 async function checkTopFolder(options: SmokeCheckOptions): Promise<string[]> {
-  const response = await get(options, "/v1/folders/root", true);
+  // Asked as the page asks: with the header that says gzip can be read.
+  const response = await get(options, "/v1/folders/root", true, ACCEPTS_GZIP);
   if (response.status !== 200) {
     return [`the top folder answered ${response.status}, expected 200`];
   }

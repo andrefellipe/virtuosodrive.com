@@ -23,7 +23,7 @@ const EDGE_SECRET = "edge-secret-for-tests";
  * The guarantee of scalability design C21, through the function's entry
  * point: 4,000 items with 255-character names of four-byte characters are
  * answered, and the response handed to the platform is under 5.5 megabytes
- * whether or not compression is accepted. Slow, so not in the quick run.
+ * whether or not the caller sends X-Accept-Gzip. Slow, so not in the quick run.
  */
 describe("the folder operation with 4,000 items of the longest names", () => {
   let postgres: TestDatabase;
@@ -77,8 +77,9 @@ describe("the folder operation with 4,000 items of the longest names", () => {
     await postgres?.stop();
   });
 
-  it("is handed over under 5.5 megabytes when compression is not accepted", async () => {
-    const response = await ask();
+  it("is handed over plain, under 5.5 megabytes, to a caller that does not send X-Accept-Gzip", async () => {
+    // The standard header is not read: sending it changes nothing.
+    const response = await ask({ "accept-encoding": "gzip" });
 
     expect(response.statusCode).toBe(200);
     expect(response.isBase64Encoded).toBeUndefined();
@@ -96,9 +97,9 @@ describe("the folder operation with 4,000 items of the longest names", () => {
     expect(entries.at(-1)).not.toHaveProperty("fault");
   });
 
-  it("is handed over under 5.5 megabytes, and unpacks to the same list, when compression is accepted", async () => {
+  it("is handed over compressed, under 5.5 megabytes, and unpacks to the same list, for a caller that sends X-Accept-Gzip: 1", async () => {
     const plain = await ask();
-    const compressed = await ask({ "accept-encoding": "gzip" });
+    const compressed = await ask({ "x-accept-gzip": "1" });
 
     expect(compressed.statusCode).toBe(200);
     expect(compressed.isBase64Encoded).toBe(true);

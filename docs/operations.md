@@ -261,7 +261,8 @@ whole time.
 
 **Confirm.**
 
-6. Open the site. The answered view means the server read the copy.
+6. Open the site. The page lists the top folder: that means the server read
+   the copy.
 7. Which database the running server is given:
 
    `aws lambda get-function-configuration --function-name vd-test-server --qualifier live --query 'Environment.Variables.DB_HOST' --output text`
@@ -482,6 +483,20 @@ slowest requests today", "access refusals in the last day". Entries are kept
 The dashboard `vd-prod` (or `vd-test`) is the first screen to open when
 something seems wrong.
 
+**A folder's answer is compressed only for a caller that asks with the
+header `X-Accept-Gzip: 1`.** The page sends it with every request for a
+folder, and so do the pipeline's gates, the smoke check and the end-to-end
+tests. A caller that does not send it, with exactly that value, gets the
+same answer uncompressed: a request made by hand with `curl` comes back
+plain unless you add `--header "X-Accept-Gzip: 1" --compressed`. The header
+is the project's own because the standard one, `Accept-Encoding`, cannot be
+used: the server sits behind the edge, the edge passes on only the request
+headers its rule lists, and AWS refuses `Accept-Encoding` in that rule (the
+first deployment of Unit U3 failed on it on 2026-11-28, and nothing was put
+in place). The server does not read `Accept-Encoding` at all. In the log, a
+folder entry's `answerBytes` is the size as sent, so the same folder shows
+two sizes, one for each kind of caller.
+
 ## 7. What to do when an alarm emails
 
 Every alarm emails once when it starts and once when it clears.
@@ -550,7 +565,9 @@ database changes as usual and then one more, kept apart in
 nothing. That change is never recorded as applied. Terraform refuses the
 switch in production, and so does the change runner itself.
 
-1. Note the version the test site shows.
+1. Note the version the test environment runs: the `version` in the answer
+   of `/v1/site-information`. The page does not show it. The command is in
+   step 8 of "Restore the database" above.
 2. In a pull request, add `failing_change = true` to `test.tfvars`. Merge
    it.
 3. The `deliver` run applies Terraform (the only change is one setting of
@@ -560,8 +577,9 @@ switch in production, and so does the change runner itself.
    run. Its summary reads `notPutInPlace`. The jobs for the end-to-end tests
    and for production do not start. GitHub emails you about the failed run;
    no alarm email is sent, because only production's job sends one.
-4. Open the test site. It shows the same version as in step 1 and the
-   answered view.
+4. Ask `/v1/site-information` again, with the same command. Its `version`
+   is the same as in step 1: take the version from that answer, not from
+   the page. Then open the test site: the page lists the top folder.
 5. In a second pull request, set `failing_change = false` (or remove the
    line). Merge it. The run succeeds and applies no database change.
 

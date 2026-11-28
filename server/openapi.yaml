@@ -85,12 +85,19 @@ paths:
             type: string
             maxLength: 128
           description: The version last received for this folder
-        - name: Accept-Encoding
+        - name: X-Accept-Gzip
           in: header
           required: false
           schema:
             type: string
-          description: The answer is compressed only if this names gzip
+            enum: ["1"]
+          description: >
+            Send the value 1 to say that a gzip answer can be read. The answer
+            is compressed only for a caller that sends it, and then only when
+            that is the smaller form to send. Without it, or with any other
+            value, the answer is plain. A header of this interface's own: the
+            server does not read the standard request header for accepted
+            encodings, which does not reach it.
         - $ref: "#/components/parameters/RequestId"
       responses:
         "200":
@@ -109,6 +116,11 @@ paths:
                 type: string
                 enum: [gzip]
               description: Present when the answer is compressed
+            Vary:
+              schema:
+                type: string
+                enum: [X-Accept-Gzip]
+              description: The answer depends on whether X-Accept-Gzip was sent
             Server-Timing:
               schema:
                 type: string

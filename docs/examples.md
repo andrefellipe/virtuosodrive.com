@@ -42,7 +42,9 @@ U1's examples; where the two differ, the later Units follow U3's.
 - It names the request headers it reads (`headers`) and is handed no other.
 - It may name response headers, answer with no body, and hand back JSON it
   has already written out and perhaps compressed (`server/src/http/body.ts`
-  decides when compressing is worth it).
+  decides when compressing is worth it, and only for a caller that sent the
+  header `X-Accept-Gzip: 1`; why not the standard header is told in
+  `docs/operations.md`, section 6).
 - It declares the fields it adds to its log entry, with their types
   (`logFields`), and adds them with `log(...)` or with its answer. A field
   that was not declared is dropped. No name of a file or folder, and nothing

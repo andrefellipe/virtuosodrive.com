@@ -38,6 +38,11 @@ export type ReadResult<T> =
 export interface ReadOptions {
   /** The version the caller holds, exactly as the server sent it. */
   heldVersion?: string;
+  /**
+   * Request headers of the call's own, sent with every attempt. They cannot
+   * replace the ones this function sets.
+   */
+  headers?: Readonly<Record<string, string>>;
 }
 
 export interface CallEnvironment {
@@ -86,8 +91,9 @@ async function attempt<T>(
   path: string,
   parse: (body: unknown) => T | undefined,
   environment: CallEnvironment,
-  heldVersion: string | undefined,
+  options: ReadOptions,
 ): Promise<Attempt<T>> {
+  const heldVersion = options.heldVersion;
   const sentId = environment.newRequestId();
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), REQUEST_LIMIT_MS);
@@ -96,6 +102,7 @@ async function attempt<T>(
     response = await environment.fetch(path, {
       method: "GET",
       headers: {
+        ...options.headers,
         Accept: "application/json",
         [REQUEST_ID_HEADER]: sentId,
         ...(heldVersion === undefined
@@ -175,12 +182,7 @@ export async function readFromServer<T>(
     if (tries > 0) {
       await environment.wait(RETRY_PAUSES_MS[tries - 1] as number);
     }
-    const outcome = await attempt(
-      path,
-      parse,
-      environment,
-      options.heldVersion,
-    );
+    const outcome = await attempt(path, parse, environment, options);
     if (outcome.next === "done") {
       return outcome.result;
     }
