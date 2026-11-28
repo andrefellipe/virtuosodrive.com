@@ -80,6 +80,7 @@ describe("reading with a version held", () => {
       Accept: "application/json",
       "X-Request-Id": "page-1",
       "If-None-Match": VERSION,
+      "X-Accept-Gzip": "1",
     });
     expect(calls[0]?.init).toMatchObject({ method: "GET", cache: "no-store" });
   });
@@ -92,6 +93,42 @@ describe("reading with a version held", () => {
     expect(sentHeaders()).toEqual({
       Accept: "application/json",
       "X-Request-Id": "page-1",
+      "X-Accept-Gzip": "1",
+    });
+  });
+
+  it("tells the server that gzip can be read, with X-Accept-Gzip: 1, on every attempt of a request for a folder", async () => {
+    const { environment, calls, sentHeaders } = setUp([
+      new Response(null, { status: 503 }),
+      new Error("network"),
+      ok(),
+    ]);
+
+    const result = await readFolder(FOLDER, undefined, environment);
+
+    expect(result.kind).toBe("answered");
+    expect(calls).toHaveLength(3);
+    expect(
+      calls.map((_, index) => sentHeaders(index)["X-Accept-Gzip"]),
+    ).toEqual(["1", "1", "1"]);
+  });
+
+  it("sends the header with a request for a folder only: another read does not carry it, and a call's own headers cannot replace the ones every call sends", async () => {
+    const { environment, sentHeaders } = setUp([ok(), ok()]);
+
+    await readFromServer("/v1/other", parseFolder, environment);
+    await readFromServer("/v1/other", parseFolder, environment, {
+      headers: { Accept: "text/html", "X-Request-Id": "forged", "X-More": "a" },
+    });
+
+    expect(sentHeaders(0)).toEqual({
+      Accept: "application/json",
+      "X-Request-Id": "page-1",
+    });
+    expect(sentHeaders(1)).toEqual({
+      Accept: "application/json",
+      "X-Request-Id": "page-2",
+      "X-More": "a",
     });
   });
 

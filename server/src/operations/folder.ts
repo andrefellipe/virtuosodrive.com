@@ -7,7 +7,11 @@ import {
   PathTooDeepError,
 } from "../drive/store-errors.ts";
 import { makeVersionTag } from "../drive/version-tag.ts";
-import { prepareJson } from "../http/body.ts";
+import {
+  ACCEPT_GZIP_HEADER,
+  ACCEPT_GZIP_HEADER_NAME,
+  prepareJson,
+} from "../http/body.ts";
 import { defineOperation } from "../http/operation.ts";
 import type {
   DeclaredHeaders,
@@ -19,7 +23,6 @@ import { OperationFailure } from "../http/problem.ts";
 
 /** The header in which a caller says which version it holds. */
 const VERSION_HELD = "if-none-match";
-const ENCODINGS_ACCEPTED = "accept-encoding";
 
 const versionSent = (headers: DeclaredHeaders): boolean =>
   headers[VERSION_HELD] !== undefined;
@@ -74,8 +77,11 @@ export interface FolderOperationOptions {
  *   - A caller that sends the version it holds is told "unchanged" (304, no
  *     content) when that is the current one; visibility is checked first
  *     (S27, in the Drive module).
- *   - The answer is compressed only when that is the smaller form to send
- *     (performance design P22), and is never to be stored (S28): the request
+ *   - The answer is compressed only for a caller that sends the header
+ *     `X-Accept-Gzip: 1`, and then only when that is the smaller form to
+ *     send (performance design P22, with the header of our own in place of
+ *     "Accept-Encoding", which this operation does not read: see
+ *     http/body.ts). It is never to be stored (S28): the request
  *     steps mark every answer so, "not found" and "unchanged" included.
  *   - A full answer reports the time the operation took, in `Server-Timing`,
  *     which the pipeline's speed gate reads.
@@ -105,7 +111,7 @@ export function folderOperation(
         versionSent: versionSent(headers),
       }),
     },
-    headers: [VERSION_HELD, ENCODINGS_ACCEPTED],
+    headers: [VERSION_HELD, ACCEPT_GZIP_HEADER],
     logFields: {
       folderId: "string",
       folderOutcome: "string",
@@ -144,14 +150,16 @@ export function folderOperation(
       }
       const { prepared, sentBytes } = prepareJson(
         JSON.stringify(answer.view),
-        headers[ENCODINGS_ACCEPTED],
+        headers[ACCEPT_GZIP_HEADER],
       );
       return {
         status: 200,
         prepared,
         headers: {
           etag: makeVersionTag(answer.view.folderId, answer.version),
-          vary: "Accept-Encoding",
+          // A full answer depends on whether the caller sent the header:
+          // compressed for one that did, plain for one that did not.
+          vary: ACCEPT_GZIP_HEADER_NAME,
           "server-timing": `app;dur=${Math.max(0, now() - startedAt).toFixed(1)}`,
         },
         log: {

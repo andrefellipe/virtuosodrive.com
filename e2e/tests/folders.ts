@@ -34,6 +34,13 @@ export const SAMPLES = {
 /** The server's folder route, for the tests that hold it back or block it. */
 export const FOLDER_ROUTE = "**/v1/folders/**";
 
+/**
+ * What the page sends with every request for a folder: it tells the server
+ * that a gzip answer can be read. A test that asks the server for a folder
+ * itself, without the page, sends it too.
+ */
+export const ACCEPTS_GZIP = { "X-Accept-Gzip": "1" } as const;
+
 export const NOT_AVAILABLE_YET = "This is not available yet.";
 
 export const list = (page: Page): Locator => page.getByTestId("file-list");

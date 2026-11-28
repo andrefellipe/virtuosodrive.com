@@ -56,7 +56,7 @@ describe("the folder operation", () => {
       name: "getFolder",
       method: "GET",
       path: "/v1/folders/{folderId}",
-      headers: ["if-none-match", "accept-encoding"],
+      headers: ["if-none-match", "x-accept-gzip"],
       logFields: {
         folderId: "string",
         folderOutcome: "string",

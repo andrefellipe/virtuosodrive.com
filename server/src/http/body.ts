@@ -17,21 +17,31 @@ import type { PreparedBody } from "./operation.ts";
 export const COMPRESS_ABOVE_BYTES = 1_024;
 
 /**
- * Whether the caller accepts gzip: the header names it, and not with a
- * weight of zero. Nothing else in the header is looked at.
+ * The request header by which a caller says it can read a gzip answer, in
+ * the lower case the entry point hands headers over in, and the one value
+ * that says so.
+ *
+ * It is a header of the project's own, and not the standard
+ * "Accept-Encoding", because the edge cannot be made to pass the standard
+ * one to the server: AWS refuses it in the rule that lists the headers
+ * passed on while nothing is kept at the edge ("The parameter Headers
+ * contains Accept-Encoding that is not allowed", 2026-11-28). The server
+ * does not read "Accept-Encoding" at all. The page and the pipeline's checks
+ * send this header; a caller that does not, such as a person with a plain
+ * command-line client, gets the plain answer.
  */
-export function acceptsGzip(acceptEncoding: string | undefined): boolean {
-  if (acceptEncoding === undefined) {
-    return false;
-  }
-  return acceptEncoding.split(",").some((entry) => {
-    const [coding, ...parameters] = entry.split(";").map((part) => part.trim());
-    if (coding?.toLowerCase() !== "gzip") {
-      return false;
-    }
-    const weight = parameters.find((parameter) => /^q\s*=/i.test(parameter));
-    return weight === undefined || Number(weight.split("=")[1]) > 0;
-  });
+export const ACCEPT_GZIP_HEADER = "x-accept-gzip";
+export const ACCEPT_GZIP_VALUE = "1";
+
+/** The header's name as it is written in a `Vary` header and in documents. */
+export const ACCEPT_GZIP_HEADER_NAME = "X-Accept-Gzip";
+
+/**
+ * Whether the caller says it accepts gzip: the header is there with exactly
+ * the value "1". Absent, or with any other value, it does not.
+ */
+export function acceptsGzip(acceptGzip: string | undefined): boolean {
+  return acceptGzip === ACCEPT_GZIP_VALUE;
 }
 
 /** The size of a plain body inside the response handed to the platform. */
@@ -53,18 +63,19 @@ export interface PreparedJson {
 /**
  * Prepares JSON text for sending: compressed when all three hold, the caller
  * accepts gzip, the plain text is over 1 kilobyte, and the compressed form as
- * handed over is the smaller; otherwise as it is.
+ * handed over is the smaller; otherwise as it is. `acceptGzip` is the value
+ * of the caller's X-Accept-Gzip header, as it came.
  */
 export function prepareJson(
   text: string,
-  acceptEncoding: string | undefined,
+  acceptGzip: string | undefined,
 ): PreparedJson {
   const plainBytes = Buffer.byteLength(text);
   const plain: PreparedJson = {
     prepared: { encoding: "identity", text },
     sentBytes: plainBytes,
   };
-  if (!acceptsGzip(acceptEncoding) || plainBytes <= COMPRESS_ABOVE_BYTES) {
+  if (!acceptsGzip(acceptGzip) || plainBytes <= COMPRESS_ABOVE_BYTES) {
     return plain;
   }
   const bytes = gzipSync(text);

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { baseUrl, giveAccess } from "./environment.ts";
 import {
+  ACCEPTS_GZIP,
   breadcrumb,
   expectListShown,
   expectNoAccessibilityViolations,
@@ -330,6 +331,7 @@ test.describe("browsing", () => {
     // Nothing in the answer tells of what is hidden.
     const answer = await page.request.get(
       `/v1/folders/${new URL(page.url()).pathname.split("/").at(-1)}`,
+      { headers: ACCEPTS_GZIP },
     );
     expect(await answer.text()).not.toMatch(/Deleted f|deleted|position/);
 
@@ -348,6 +350,8 @@ test.describe("browsing", () => {
       const reader = await playwright.request.newContext({
         baseURL: baseUrl(),
         extraHTTPHeaders: {
+          // Asked as the page asks.
+          ...ACCEPTS_GZIP,
           Cookie: cookies
             .map((cookie) => `${cookie.name}=${cookie.value}`)
             .join("; "),

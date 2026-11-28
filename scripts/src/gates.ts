@@ -8,10 +8,13 @@ import { percentile } from "./percentile.ts";
  *   unchanged    a folder asked for again with the version received answers
  *                "unchanged": the edge passes the caller's version in, and
  *                the version header out;
- *   compressed   the 500-item sample folder, asked for accepting gzip,
- *                arrives compressed and unpacks to the right list: the edge
- *                passes the accepted encodings in, and the entry point and
- *                the edge carry a compressed body out;
+ *   compressed   the 500-item sample folder, asked for with the header
+ *                "X-Accept-Gzip: 1", arrives compressed and unpacks to the
+ *                right list: the edge passes that header in, and the entry
+ *                point and the edge carry a compressed body out. Asked for
+ *                again without the header, it arrives plain, with the same
+ *                list: the server compresses only for a caller that says it
+ *                can read gzip;
  *   speed        100 requests for that folder, 5 a second: the 95th of the
  *                100 durations the server itself reports is at most 500
  *                milliseconds (requirement NFR9.21);
@@ -21,7 +24,21 @@ import { percentile } from "./percentile.ts";
  *
  * The sample folders are found by walking from "All" by name, never by an
  * identifier: identifiers are generated in each environment.
+ *
+ * Every request sends what the page sends, "X-Accept-Gzip: 1" included; the
+ * one exception is the second request of the gate "compressed", which is
+ * there to see what a caller without that header gets.
  */
+
+/**
+ * The header by which a caller tells the server it can read a gzip answer.
+ * The server reads this and not the standard "Accept-Encoding", which the
+ * edge is not allowed to pass on (server/src/http/body.ts).
+ */
+export const ACCEPT_GZIP_HEADER = "X-Accept-Gzip";
+export const ACCEPTS_GZIP: Readonly<Record<string, string>> = {
+  [ACCEPT_GZIP_HEADER]: "1",
+};
 
 /** The sample folder of 500 items, and what its list must be. */
 export const LARGE_SAMPLE_FOLDER = "Five hundred items";
@@ -77,20 +94,50 @@ const failed = (failures: string[], report: string[] = []): GateResult => ({
   failures,
 });
 
+/**
+ * Asks for a folder as the page does. `plain` asks instead as a caller that
+ * does not say it can read gzip.
+ */
 function askFolder(
   options: GateOptions,
   folderId: string,
   headers: Record<string, string> = {},
+  plain = false,
 ): Promise<Response> {
   return options.fetch(
     new URL(`/v1/folders/${encodeURIComponent(folderId)}`, options.baseUrl),
     {
       method: "GET",
       redirect: "error",
-      headers: { Cookie: `vd_access=${options.accessPassword}`, ...headers },
+      headers: {
+        Cookie: `vd_access=${options.accessPassword}`,
+        ...(plain ? {} : ACCEPTS_GZIP),
+        ...headers,
+      },
       signal: AbortSignal.timeout(REQUEST_LIMIT_MS),
     },
   );
+}
+
+/** The size the answer says it had on the way, when it says so. */
+function declaredLength(response: Response): number | undefined {
+  const length = response.headers.get("content-length");
+  return length !== null && /^[0-9]+$/.test(length)
+    ? Number(length)
+    : undefined;
+}
+
+function checkLargeList(folder: FolderBody, which: string): string[] {
+  const failures: string[] = [];
+  if (folder.items.length !== LARGE_SAMPLE_COUNT) {
+    failures.push(
+      `${which} answer unpacked to ${folder.items.length} items, expected ${LARGE_SAMPLE_COUNT}`,
+    );
+  }
+  if (folder.items[0]?.name !== LARGE_SAMPLE_FIRST_NAME) {
+    failures.push(`${which} answer did not unpack to the sample folder's list`);
+  }
+  return failures;
 }
 
 async function folderBody(response: Response): Promise<FolderBody> {
@@ -168,35 +215,74 @@ export function gateUnchanged(options: GateOptions): Promise<GateResult> {
 export function gateCompressed(options: GateOptions): Promise<GateResult> {
   return guarded(async () => {
     const folderId = await findSampleFolder(options, LARGE_SAMPLE_FOLDER);
-    const response = await askFolder(options, folderId, {
-      "Accept-Encoding": "gzip",
-    });
-    if (response.status !== 200) {
-      return failed([`the folder answered ${response.status}, expected 200`]);
+    // How compressed is told from plain. The runtime's fetch unpacks a gzip
+    // answer by itself, so the bytes read here are the unpacked ones either
+    // way and cannot tell. What can be observed is what the answer says of
+    // how it travelled, which fetch leaves as it came:
+    //   - its Content-Encoding header: "gzip" for the request with the
+    //     header, none at all for the request without;
+    //   - its Content-Length, when both answers carry one: the size on the
+    //     way, which must be smaller for the compressed answer.
+    // And both must unpack to the same, right list. The plain request also
+    // says, in the standard header, that it accepts no encoding, so that
+    // nothing on the way has cause to compress its answer.
+    const withHeader = await askFolder(options, folderId);
+    if (withHeader.status !== 200) {
+      return failed([
+        `asked with ${ACCEPT_GZIP_HEADER}, the folder answered ${withHeader.status}, expected 200`,
+      ]);
     }
-    // The answer is unpacked by the time it is read here; the header says
-    // how it travelled.
-    const encoding = response.headers.get("content-encoding");
-    const folder = await folderBody(response);
+    const compressedEncoding = withHeader.headers.get("content-encoding");
+    const compressedLength = declaredLength(withHeader);
+    const compressed = await folderBody(withHeader);
+
+    const withoutHeader = await askFolder(
+      options,
+      folderId,
+      { "Accept-Encoding": "identity" },
+      true,
+    );
+    if (withoutHeader.status !== 200) {
+      return failed([
+        `asked without ${ACCEPT_GZIP_HEADER}, the folder answered ${withoutHeader.status}, expected 200`,
+      ]);
+    }
+    const plainEncoding = withoutHeader.headers.get("content-encoding");
+    const plainLength = declaredLength(withoutHeader);
+    const plain = await folderBody(withoutHeader);
+
     const failures: string[] = [];
-    if (encoding !== "gzip") {
+    if (compressedEncoding !== "gzip") {
       failures.push(
-        `the answer arrived with content encoding "${encoding ?? "none"}", expected gzip: either the accepted encodings do not reach the server, or the compressed answer does not come out`,
+        `asked with ${ACCEPT_GZIP_HEADER}, the answer arrived with content encoding "${compressedEncoding ?? "none"}", expected gzip: either the header does not reach the server through the edge, or the compressed answer does not come out`,
       );
     }
-    if (folder.items.length !== LARGE_SAMPLE_COUNT) {
+    if (plainEncoding !== null && plainEncoding !== "identity") {
       failures.push(
-        `the answer unpacked to ${folder.items.length} items, expected ${LARGE_SAMPLE_COUNT}`,
+        `asked without ${ACCEPT_GZIP_HEADER}, the answer arrived with content encoding "${plainEncoding}", expected none: a caller that does not say it reads gzip must get the plain answer`,
       );
     }
-    if (folder.items[0]?.name !== LARGE_SAMPLE_FIRST_NAME) {
-      failures.push("the answer did not unpack to the sample folder's list");
+    if (
+      compressedLength !== undefined &&
+      plainLength !== undefined &&
+      compressedLength >= plainLength
+    ) {
+      failures.push(
+        `the answer called compressed was ${compressedLength} bytes on the way and the plain one ${plainLength}: it is not the smaller`,
+      );
     }
-    return failures.length > 0
-      ? failed(failures)
-      : passed(
-          `"${LARGE_SAMPLE_FOLDER}" arrived compressed with gzip and unpacked to its ${LARGE_SAMPLE_COUNT} items.`,
-        );
+    failures.push(...checkLargeList(compressed, "the compressed"));
+    failures.push(...checkLargeList(plain, "the plain"));
+    if (failures.length > 0) {
+      return failed(failures);
+    }
+    const sizes =
+      compressedLength !== undefined && plainLength !== undefined
+        ? ` On the way: ${compressedLength} bytes compressed, ${plainLength} plain.`
+        : " Neither answer, or only one, said its size on the way, so the two sizes were not compared.";
+    return passed(
+      `"${LARGE_SAMPLE_FOLDER}" arrived compressed with gzip when asked with ${ACCEPT_GZIP_HEADER}, and plain when asked without; both unpacked to its ${LARGE_SAMPLE_COUNT} items.${sizes}`,
+    );
   });
 }
 
@@ -224,9 +310,7 @@ export function gateFolderSpeed(options: GateOptions): Promise<GateResult> {
         }
       }
       previousStartedAt = options.now();
-      const response = await askFolder(options, folderId, {
-        "Accept-Encoding": "gzip",
-      });
+      const response = await askFolder(options, folderId);
       await response.arrayBuffer();
       if (response.status === REFUSED_BY_THE_REQUEST_LIMIT) {
         return failed([

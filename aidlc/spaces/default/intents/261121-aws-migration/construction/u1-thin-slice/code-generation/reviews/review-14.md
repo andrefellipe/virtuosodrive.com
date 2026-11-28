@@ -1,0 +1,53 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-11-28T03:29:07Z
+**Iteration:** 4
+**Verdict Dictated:** no
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Minor | `docs/records/restore.md`, the bullet "The server's first call to the copy failed (503 after 2.3 seconds), and the smoke check passed only at its second attempt. A person opening the site in those seconds would have been shown an error." | Said more firmly than shown. Nobody opened the page in those seconds, and the 503 was the health check's answer. The site-information call answers a database failure with a 500 (`server/src/http/problem.ts`), which the page does not retry (`web/src/api/call-server.ts`), so an error is likely, but how long the window lasted is unknown (the next smoke attempt came about 10 s later). `docs/records/measured-speeds.md` is careful ("what a person would have seen at that moment was not tried in a browser"); this bullet and the sentence "For those seconds the site answers with an error" in `docs/operations.md` procedure 4 step 5 are not. | Reword both as an inference from the code and the log, for example "a person's call in those seconds would probably have failed; this was not tried". | Resolved (reviewer) |
+| R-02 | Minor | `aidlc/spaces/default/intents/261121-aws-migration/construction/u1-thin-slice/code-generation/code-summary.md`, line 395 "The page is 75,321 bytes compressed" against the correction paragraph that says the page's size was corrected "as the pipeline printed it" | The earlier section still gives the maintainer's own build figure (75,321) without saying so, while the pipeline printed 75,302 for Release `1db1c19` (checked in run 45932874039: "page: 75302 bytes compressed"). The correction paragraph lists the size as corrected and the older figure stays unmarked, as it does for 33.5 and 6.5. | Add "(the maintainer's build; the pipeline printed 75,302)" there, or name this figure in the correction paragraph alongside 33.5 and 6.5. | Accepted risk |
+| R-03 | Minor | `docs/operations.md`, the alarm rehearsal steps, step 2 "The email arrives within about 10 minutes" | The rehearsal's record now says the arrival times were not written down, so "about 10 minutes" has no measurement behind it. The only measured figure is the alarm's state change, about 1 to 2 minutes after the last failing request (05:16 and 05:17, raised 05:18:24). | Say "the alarm is raised within a few minutes; the email follows" or leave the time out. | Resolved (reviewer) |
+| R-04 | Minor | `aidlc/spaces/default/intents/261121-aws-migration/construction/u1-thin-slice/code-generation/code-generation-plan.md`, Step 18 box | Step 18 ("The password page must work for a person") is still `[ ]`, though pull request 19 with that title was merged and deployed (run 45932874039). Steps 19 to 24 are ticked. | Tick it, or state why it stays open. | Accepted risk |
+| R-05 | Minor | `docs/records/alarm-proofs.md`, rows "Requests made to the deliberately failing operation" (14 and 11 at 05:16 and 05:17) and "No email with fewer than 20 requests" (10 requests at 05:26) | New figures that I could not re-read: the AWS sign-in had expired. They rest on the server's log as cited in the file. | Nothing to change if the maintainer re-read the log. A reader cannot check them from the repository. | Accepted risk |
+| R-06 | Minor | docs/operations.md > procedure 4 (restore) step 6 "Open the site. The answered view means the server read the copy."; and the failing-database-change rehearsal step 4 "It shows the same version as in step 1 and the answered view." | `web/src/App.tsx` no longer renders U1's status view, so a person following these two steps will not find an "answered view" or a version on the page. Step 7 (the database host) and the smoke check still prove what step 6 meant, but the text is no longer true of the page. | Reword both: for the restore, "the page lists the top folder (it read the copy)", and for the rehearsal, read the version from `/v1/site-information` or the smoke check's output. | New |
+| R-07 | Minor | e2e/tests/thin-slice.spec.ts > "the could-not-load view…" and "the page as it opens, and the password page, pass the accessibility scan"; web/src/status/SiteStatus.test.tsx | Beyond the owed request identifier and automatic focus (already decided), two other things U1 proved are no longer proved by any test. (1) The accessibility scan of U1's three status views (checking, answered, could not reach) is gone from the end-to-end tests, and `SiteStatus.test.tsx` has no scan, so the kept component is no longer checked for accessibility. (2) The page's own proof of the running Release (the version shown on the page equals `VD_EXPECTED_VERSION`) became a check of the server's `/v1/site-information` answer. The smoke check still checks that the page points at the Release's files. The "gives up after three tries" test now exercises the folder call, so U1's site-information retry count is proved by unit tests only. | Either add a component-level accessibility test of the three `SiteStatus` states, or record in `docs/examples.md` that the status view is an unscanned example. Nothing more needed for (2) and the retry count. | New |
+
+> R-01 Reviewer note: `docs/records/restore.md` and `docs/operations.md` procedure 4 step 5 now say "probably", name the 500 from site information, and say it was inferred and not tried in a browser.
+
+> R-01 Earlier decision: Accepted risk
+
+> R-03 Reviewer note: `docs/operations.md` alarm rehearsal step 2 now says "within a few minutes of the last failing request" and that the email arrival times were not written down.
+
+> R-03 Earlier decision: Accepted risk
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| `npm run check` | Exit 0 (run twice; build "Release 68c83e8", page 93,859 bytes against the 307,200 budget; "Repository checks passed (905 files)"; coverage table printed with every file I looked at above the floor) | The lint, type check, tests, build and repository checks pass on `HEAD`. |
+| `terraform -chdir=infra/setup test` | 3 passed, 0 failed | Setup unchanged and sound. |
+| `terraform -chdir=infra/environment test` | 26 passed, 0 failed | Includes the edge's header-list assertion added by U3. |
+
+### Other checks
+
+**1. U1's two operations through the changed shared code.** Sound. `health.ts` and `site-information.ts` are not in the diff. In `request-steps.ts` the order is unchanged: edge-secret check, request identifier, path match (now `findOperationFor`), then validation. An unknown path still answers `notFound`. A thrown failure still becomes a Problem with only the code, and the internal reason goes to the log only. A check on a path's values runs only for operations that declare `params`, so U1's two operations never take that branch. Operations see only the headers they declare, and U1's declare none. The added log fields are filtered against the declared list and cannot replace the entry's own fields; `scrub` still runs over the whole entry. `database.ts` only gains `transaction()`, and `query`, the 3-second deadline and the one reopen of a broken connection are untouched. A statement that was sent is still never sent twice. The size limit measures the whole response and fails with a small Problem. U1's answers are far below it.
+
+**2. Edited U1 tests.** `index.test.ts` and `openapi.test.ts` still assert as strictly as before. The list is still exact, only GET is allowed, unique names and paths are required, and the OpenAPI check is added to, not weakened. The `SiteStatus.test.tsx` App test now asserts the folder screen is inside the page and that the status line is absent. It stubs `fetch` with `vi.stubGlobal` and never unstubs it. No other test in that file uses the global `fetch` after it, because they pass an injected environment, so nothing leaks today, but the test is order-sensitive. See also the new finding about the end-to-end tests.
+
+**3. The page.** `SiteStatus.tsx` and its tests are intact (95% coverage), and the component stays in the code as an example. `call-server.ts` keeps the 10-second limit, the two further tries for reads after 1 and 3 seconds, the retry on 503 and 429, the reload on a 401 that is not a Problem, and `cache: "no-store"`. The version is held in memory only. 304 handling applies only when the caller passed a held version, so U1's reads behave as before.
+
+**4. Pipeline and scripts.** I read `action.yml` and `deliver.yml` in full. The order is: find what is running, refuse an older Release over a newer one (unchanged), plan, pause, apply, store packages and read the password, smoke check of the running version without the folder check, database changes, sample content (test only, before the switch), switch with `put_back` on error, smoke check of the new version, record, prune. The refusal logic is byte-identical. `go-back.yml` is not in the diff. The account-number mask step is unchanged in both jobs. The repository checks only gain rules (`findSampleStepProblems`, `findStaleNameCharacters`) and none was removed or loosened. The smoke check before the switch is exactly U1's. The folder check is opt-in through `VD_HAS_BROWSING`, set only after the switch. `checks.yml` changes only a printed note. In `deliver.yml` the new gates and the compatibility check come after U1's end-to-end tests and measurement and before approval, so production is blocked on their failure.
+
+**5. Infrastructure.** The edge change is the origin request policy's header list, which went from three to five, plus a comment and two outputs. Nothing else of the edge moved. Not raised: AWS's refusal of `Accept-Encoding`. The monitoring module only adds two saved searches, a log view on the dashboard (y=18, below the existing widgets) and two outputs. U1's four searches, alarms, series and dashboard are unchanged.
+
+**6. Documents.** The R-01 and R-03 wording is corrected. `docs/records/*.md` additions are marked "not yet performed" and do not touch U1's rows. The measured-speeds row for the page size still shows 75,302 beside the maintainer's 75,321, as before. `docs/operations.md` has the new sample-content paragraph, which matches the action. The stale "answered view" text is in the first new finding.
+
+### Summary
+
+U1's server code, pipeline order, go-back, account masking, edge and monitoring are sound as they now stand, and all validations pass. Two Minor findings remain: two operating procedures still describe a status view the page no longer shows, and U1's status view lost its accessibility scan. Neither blocks.

@@ -48,7 +48,7 @@ function setUp(answer: (thingId: string) => OperationResult | Promise<never>) {
           versionSent: headers["if-none-match"] !== undefined,
         }),
       },
-      headers: ["if-none-match", "Accept-Encoding"],
+      headers: ["if-none-match", "X-Accept-Gzip"],
       logFields: {
         thingId: "string",
         thingOutcome: "string",
@@ -172,6 +172,8 @@ describe("what an operation is given (change 2)", () => {
 
     await ask("/v1/things/abc", {
       "If-None-Match": '"abc.1"',
+      "x-accept-gzip": "1",
+      // Not declared, so never handed over: the server does not read it.
       "accept-encoding": "gzip",
       cookie: "session=secret",
       authorization: "Bearer secret",
@@ -180,7 +182,7 @@ describe("what an operation is given (change 2)", () => {
 
     expect(seen[0]?.headers).toEqual({
       "if-none-match": '"abc.1"',
-      "accept-encoding": "gzip",
+      "x-accept-gzip": "1",
     });
   });
 
@@ -192,7 +194,7 @@ describe("what an operation is given (change 2)", () => {
 
     expect(seen[0]?.headers).toEqual({
       "if-none-match": undefined,
-      "accept-encoding": undefined,
+      "x-accept-gzip": undefined,
     });
     expect(JSON.parse(plain.body as string)).toEqual({
       headers: {},
@@ -315,7 +317,7 @@ describe("what an operation may answer (change 4)", () => {
     const { ask } = setUp(() => ({
       status: 200,
       prepared: { encoding: "gzip", bytes: gzipSync(text) },
-      headers: { vary: "Accept-Encoding" },
+      headers: { vary: "X-Accept-Gzip" },
     }));
 
     const response = await ask("/v1/things/abc");
@@ -325,7 +327,7 @@ describe("what an operation may answer (change 4)", () => {
       "content-encoding": "gzip",
       "content-type": "application/json",
       "cache-control": "no-store",
-      vary: "Accept-Encoding",
+      vary: "X-Accept-Gzip",
     });
     expect(
       gunzipSync(Buffer.from(response.body as string, "base64")).toString(),

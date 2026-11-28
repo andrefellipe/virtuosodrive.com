@@ -199,7 +199,7 @@ Built as far as it can be built honestly, in `deliver`, after the gates.
 ## Not verified
 
 - **That the version header and a compressed answer pass through the edge and the entry point** in both directions. The two gates exist for this.
-- **That AWS accepts `Accept-Encoding` in the edge's rule.** If it refuses, Terraform fails in test before anything else changes.
+- **That AWS accepts `Accept-Encoding` in the edge's rule.** If it refuses, Terraform fails in test before anything else changes. *Settled on 2026-11-28: AWS refused it, and Terraform failed in test before anything else changed. Step 18 replaced the header; see "The server is told by a header of our own that a caller accepts gzip (Step 18)". What is still not verified is that AWS accepts `If-None-Match` and `X-Accept-Gzip` in the same rule.*
 - **How the page looks and behaves in a browser**: the layout at 320 pixels, the 44-pixel sizes, the colours, the focus ring, touch.
 - **The dashboard's log view in AWS.** Its search is now a count grouped by outcome and by five minutes, shown as a table. Neither the search nor the view has been run against AWS; and whether the service would draw it as one line per outcome, as the monitoring design pictures it, has not been seen and is not relied on.
 - **Case in letters newer than the database's tables** (the reviewer's residue). The character lists are from Unicode 18.0; PostgreSQL 18.1 folds case by its own tables, which are Unicode 16.0. A pair of letters that was given upper and lower case only in Unicode 17 or 18 is not folded by the database, so two names that differ only in the case of such a letter would count as two names, not one. No test covers this, and none can make the database fold what its tables do not hold; it ends when the database's tables catch up.
@@ -234,6 +234,145 @@ answered by one repair on 2026-11-27. Only these four points were touched.
 4. **Minor: this summary contradicted itself** about U1's changed tests. The sentence under "U1's tests that were changed" now says that one of them asserts less.
 
 The reviewer's residue on the character lists is under "Not verified".
+
+## The server is told by a header of our own that a caller accepts gzip (Step 18)
+
+Built on 2026-11-28, on the branch `u3-compression-header`, started from
+`aws-migration` after Steps 1 to 17 were merged. Nothing was deployed,
+committed or pushed, and no library was added. Sections above this one
+describe the code as it was before this step; where they name
+`Accept-Encoding` as what the server reads, this section corrects them.
+
+**The failed deployment.** The first deployment of this Unit to the test
+environment (run 46099600748) stopped at the infrastructure step. AWS
+refused the edge's rule for the headers passed to the server: "The parameter
+Headers contains Accept-Encoding that is not allowed". Nothing was put in
+place. This was the third item of "Not verified", and it ended as that item
+said it would.
+
+**What was changed.**
+
+- *The header.* A caller says it can read gzip with `X-Accept-Gzip: 1`.
+  Present with exactly that value, it can; absent or with any other value,
+  it cannot. The other two conditions of performance design P22 are as they
+  were: the answer is over 1 kilobyte, and the compressed form as handed
+  over is the smaller. The server no longer reads `Accept-Encoding`.
+- *Server.* `server/src/http/body.ts` holds the header's name and value and
+  the check (`acceptsGzip` is now an exact comparison; the parsing of a list
+  of encodings and weights is gone). `server/src/operations/folder.ts`
+  declares `x-accept-gzip` in place of `accept-encoding`, and a full answer
+  says `Vary: X-Accept-Gzip`. `Vary` and `Server-Timing` are still on the
+  200 only; the code of the four "not found" answers was not touched.
+  `server/openapi.yaml` describes the request header and the `Vary` header.
+- *Edge.* `infra/modules/edge/main.tf`: the rule passes exactly
+  `X-Request-Id`, `Accept`, `Content-Type`, `If-None-Match` and
+  `X-Accept-Gzip`; a comment says why the standard header is not there.
+- *Page.* `web/src/api/folder.ts` sends the header with every request for a
+  folder, on every attempt. For that, `readFromServer` in
+  `web/src/api/call-server.ts` takes headers of the call's own, which cannot
+  replace the ones it sets itself. No other call sends it, and nothing else
+  in the page changed. The call is to the page's own address, so the extra
+  header causes no preflight request; the comment beside it says so.
+- *Checks of a deployed environment.* In `scripts/src/gates.ts` every
+  request for a folder sends the header, as the page does. The gate
+  "compressed" now makes two requests for the 500-item folder: one with the
+  header, one without. The smoke check's request for the top folder
+  (`scripts/src/smoke-check.ts`) and the end-to-end tests that ask the
+  server for a folder themselves (`e2e/tests/browsing.spec.ts`, with the
+  constant in `e2e/tests/folders.ts`) send it too. A comment in
+  `.github/workflows/deliver.yml` was corrected; no step changed.
+- *Documents.* `docs/operations.md`, section 6, has the paragraph on the
+  header and why the standard one could not be used; step 6 of the restore
+  procedure now reads "the page lists the top folder"; in procedure 9 the
+  version is taken from `/v1/site-information`. `docs/examples.md` points to
+  it. `docs/records/measured-speeds.md` has the NFR9.2 measurement of
+  2026-11-28 and the note that the target was met once in three
+  observations.
+
+**How the gate tells compressed from plain.** The runtime's `fetch` unpacks
+a gzip answer by itself, so the bytes the gate reads are the same either
+way. The gate asserts on what the answer says of how it travelled, which
+`fetch` leaves as it came: the `Content-Encoding` response header must be
+`gzip` for the request with the header and absent (or `identity`) for the
+request without. When both answers also carry a `Content-Length`, the
+compressed one must be the smaller, and the two sizes are printed; when
+they do not, the gate says the sizes were not compared and does not fail
+for that. Both answers must unpack to the 500 items with the right first
+name. The request without the header also sends `Accept-Encoding: identity`
+to the edge, so that nothing on the way has cause to compress its answer;
+that header does not reach the server.
+
+**Where `Accept-Encoding` still appears, and why.** None of these is an
+input to the server.
+
+| Where | Why |
+|-------|-----|
+| `infra/modules/edge/main.tf`, `enable_accept_encoding_gzip` and `enable_accept_encoding_brotli` | U1's rule for keeping the page's files at the edge: the edge's own compression of those files. Not about `/v1` |
+| `infra/modules/edge/main.tf`, the comment on the server's rule; `infra/environment/tests/browsing.tftest.hcl`, a comment and one assertion | They say that the header must not be listed, and the assertion fails if it is |
+| `scripts/src/gates.ts`, the plain request of the gate "compressed" (`identity`), and its test in `scripts/src/browsing-checks.test.ts` | Sent to the edge, as above |
+| `server/src/http/request-steps.answers.test.ts`; `server/src/operations/folder.integration.test.ts`; `server/src/operations/folder.large.integration.test.ts` | Tests that send it to the server on purpose, to show that it is not handed to the operation and changes nothing |
+| Comments in `server/src/http/body.ts`, `server/src/operations/folder.ts`, `scripts/src/gates.ts`; the paragraph in `docs/operations.md` | The reason for the header of our own |
+| The designs and reviews under this Unit's record, the plan, the audit | Not edited; see below |
+
+**What is tested.** 18 tests are new, 778 against 760, and the existing
+ones that sent `Accept-Encoding` to the server send the new header.
+
+| File | New or changed tests |
+|------|----------------------|
+| `server/src/http/body.test.ts` | Header present with `1`; absent; ten other values, one test each (empty, `0`, `true`, `yes`, `gzip`, a list of encodings, `1` with a space, `1,1`, `1.0`, `01`); the header's name and value |
+| `server/src/operations/folder.integration.test.ts` | 500 items with the header (compressed, unpacks to the plain answer) and without (plain), both with `Vary: X-Accept-Gzip`; new: 500 items stay plain for a caller that sends only `Accept-Encoding`, or the header with `0`, `true`, empty or `gzip`; a small answer stays plain with the header |
+| `server/src/operations/folder.large.integration.test.ts` | 4,000 items without the header (and with `Accept-Encoding: gzip`, which changes nothing) and with it, each under 5.5 megabytes |
+| `server/src/http/request-steps.answers.test.ts`, `server/src/operations/folder.test.ts` | The declared headers are `if-none-match` and `x-accept-gzip`; an undeclared `accept-encoding` is not handed over |
+| `web/src/api/folder.test.ts` | The header is sent with and without a version held; new: on every attempt of a retried request; new: not by another read, and a call's own headers cannot replace `Accept` or the request identifier |
+| `scripts/src/browsing-checks.test.ts` | The gate "compressed": passes with gzip for the first request and plain for the second; fails when the first is not compressed; new: fails when the second is compressed; new: sizes reported, and a failure when the compressed one is not smaller; fails on a wrong list in either; new: fails when either request is not answered 200. New: every gate sends the header with every folder request but the one plain request. New: the smoke check sends it to the folder and to nothing else |
+| `infra/environment/tests/browsing.tftest.hcl` | The rule lists exactly the five headers; a new assertion that `Accept-Encoding` is not among them |
+
+**Results, 2026-11-28.**
+
+| Command | Result |
+|---------|--------|
+| `npm run check` | Passed, exit 0: formatting, lint and type check clean; 56 test files, 778 tests, all passed; 93.9% of lines against the floor of 80% (statements 93.75%, branches 92.04%, functions 93.05%); page 93,900 bytes compressed against 307,200; "Repository checks passed (906 files)" |
+| `terraform -chdir=infra/setup fmt -check -recursive` | Exit 0 |
+| `terraform -chdir=infra/environment fmt -check -recursive` | Exit 0 |
+| `terraform -chdir=infra/setup validate` | "Success! The configuration is valid." |
+| `terraform -chdir=infra/environment validate` | "Success! The configuration is valid." |
+| `terraform -chdir=infra/setup test` | "Success! 3 passed, 0 failed." |
+| `terraform -chdir=infra/environment test` | "Success! 26 passed, 0 failed." |
+
+No threshold was touched. The end-to-end tests were not run: they need the
+deployed test environment.
+
+**What only a deployment proves.**
+
+- That AWS accepts `If-None-Match` in the same rule. The failed deployment
+  named only `Accept-Encoding`; whether that was the only header it would
+  refuse is not known. That it accepts a header of our own there is
+  expected and equally unseen.
+- That `X-Accept-Gzip` reaches the server through the edge and the entry
+  point, and that a compressed answer and the version header come back out
+  through both. The gates "compressed" and "unchanged" are what shows it.
+- Whether the answers carry a `Content-Length` through the edge. If they do
+  not, the gate "compressed" rests on `Content-Encoding` alone.
+
+**The designs name `Accept-Encoding` and are to be read with this
+correction.** They were not edited: `logical-components.md` (change 8),
+the performance design (P22), the security design (S21),
+`infrastructure-specification.md` and `cicd-pipeline.md`. Wherever they say
+the edge passes `Accept-Encoding` or the server reads it, read
+`X-Accept-Gzip` with the value `1`. S21's point stands: the header carries
+no credential.
+
+**Different from Step 18 as written.**
+
+- Procedure 9 of `docs/operations.md`: step 1 was changed as well as step
+  4, because step 4 compares with the version noted in step 1, and the page
+  shows no version.
+- The Terraform test has one assertion more than asked: that
+  `Accept-Encoding` is not in the list.
+- The gate also compares the two sizes when both are declared.
+- `source-manifest.json` is unchanged: no file was added, and every file
+  this step changed was already among its 117 paths.
+- The diary (`memory.md`) was not written to in this step.
 
 ## Housekeeping
 

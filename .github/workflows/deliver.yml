@@ -139,7 +139,7 @@ jobs:
 
       # The four gates of browsing (Unit U3). Each fails the run, and with it
       # blocks production, as the end-to-end tests do. The first two are what
-      # proves that the edge passes the version and the accepted encodings in
+      # proves that the edge passes the version and the header X-Accept-Gzip in
       # and the version and a compressed answer out: nothing short of a
       # deployed environment can. They rest on the sample content.
       - name: "Gate: a folder asked for again with its version answers unchanged, through the whole path"
