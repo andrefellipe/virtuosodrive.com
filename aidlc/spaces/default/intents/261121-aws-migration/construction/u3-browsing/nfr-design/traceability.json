@@ -1,0 +1,434 @@
+{
+  "stage": "nfr-design",
+  "unit": "u3-browsing",
+  "upstream_ids": [
+    "NFR9.20",
+    "NFR9.21",
+    "NFR9.22",
+    "NFR9.23",
+    "NFR3.28",
+    "NFR9.24",
+    "NFR11.21",
+    "NFR9.25",
+    "NFR9.26",
+    "NFR9.5",
+    "NFR9.27",
+    "NFR9.2",
+    "NFR6.20",
+    "NFR6.21",
+    "NFR6.22",
+    "NFR6.23",
+    "NFR6.24",
+    "NFR6.25",
+    "NFR6.26",
+    "NFR7.20",
+    "NFR7.21",
+    "NFR7.22",
+    "NFR8.20",
+    "NFR8.21",
+    "NFR2.20",
+    "NFR2.21",
+    "NFR2.22",
+    "NFR2.23",
+    "NFR3.20",
+    "NFR3.21",
+    "NFR3.22",
+    "NFR3.23",
+    "NFR3.24",
+    "NFR3.25",
+    "NFR3.26",
+    "NFR3.27",
+    "NFR5.20",
+    "NFR5.2",
+    "NFR2.24",
+    "NFR2.25",
+    "NFR1.20",
+    "NFR4.20",
+    "NFR5.21",
+    "NFR11.3",
+    "NFR11.20",
+    "NFR11.22",
+    "NFR11.1",
+    "NFR11.23",
+    "NFR11.5",
+    "NFR11.24",
+    "NFR11.25",
+    "NFR11.26",
+    "NFR10.20",
+    "NFR10.4",
+    "NFR10.21",
+    "NFR10.22",
+    "NFR10.23",
+    "NFR10.24",
+    "NFR10.25",
+    "NFR10.27",
+    "NFR10.26",
+    "NFR14.20",
+    "NFR10.28",
+    "NFR15.10",
+    "NFR10.29",
+    "NFR10.30",
+    "NFR10.6",
+    "NFR15.20",
+    "NFR15.8",
+    "NFR15.21",
+    "NFR10.31"
+  ],
+  "coverage": [
+    {
+      "id": "NFR9.20",
+      "status": "OK",
+      "target": "performance-design P21 where the 2 seconds go; observability-design O25 five timed opens from Brazil"
+    },
+    {
+      "id": "NFR9.21",
+      "status": "OK",
+      "target": "performance-design P21 server budget of 0.3 seconds; P20 one or two statements"
+    },
+    {
+      "id": "NFR9.22",
+      "status": "OK",
+      "target": "performance-design P20 one or two statements whatever the size or depth"
+    },
+    {
+      "id": "NFR9.23",
+      "status": "OK",
+      "target": "performance-design P20 the unchanged answer runs the walk only"
+    },
+    {
+      "id": "NFR3.28",
+      "status": "OK",
+      "target": "security-design S27 visibility is checked before versions are compared"
+    },
+    {
+      "id": "NFR9.24",
+      "status": "OK",
+      "target": "performance-design P22 the server compresses its own answers"
+    },
+    {
+      "id": "NFR11.21",
+      "status": "OK",
+      "target": "scalability-design C21 size limit checked on what is sent, 4,000 worst-case items tested"
+    },
+    {
+      "id": "NFR9.25",
+      "status": "OK",
+      "target": "performance-design P24 rows redrawn only when their state changes"
+    },
+    {
+      "id": "NFR9.26",
+      "status": "OK",
+      "target": "performance-design P25 no library, icons as fingerprinted files, U1's bundle check"
+    },
+    {
+      "id": "NFR9.5",
+      "status": "OK",
+      "target": "performance-design P25 U1's 300 kilobyte check unchanged"
+    },
+    {
+      "id": "NFR9.27",
+      "status": "OK",
+      "target": "performance-design P26 nothing new loaded when a copy starts"
+    },
+    {
+      "id": "NFR9.2",
+      "status": "OK",
+      "target": "performance-design P26 U1's figure applies"
+    },
+    {
+      "id": "NFR6.20",
+      "status": "OK",
+      "target": "performance-design P27 scan of each state of the list in the end-to-end tests"
+    },
+    {
+      "id": "NFR6.21",
+      "status": "OK",
+      "target": "performance-design P27 one Tab stop with roving focus; keys as the design's table"
+    },
+    {
+      "id": "NFR6.22",
+      "status": "OK",
+      "target": "performance-design P27 one polite status line"
+    },
+    {
+      "id": "NFR6.23",
+      "status": "OK",
+      "target": "performance-design P27 focus ring and check mark colours checked and recorded"
+    },
+    {
+      "id": "NFR6.24",
+      "status": "OK",
+      "target": "performance-design P27 minimum 44 by 44 pixels in the styles"
+    },
+    {
+      "id": "NFR6.25",
+      "status": "OK",
+      "target": "performance-design P27 movement only when reduced motion is not asked for"
+    },
+    {
+      "id": "NFR6.26",
+      "status": "OK",
+      "target": "performance-design P27 native table, selected state, text alternatives, page title"
+    },
+    {
+      "id": "NFR7.20",
+      "status": "OK",
+      "target": "performance-design P28 three engines at two widths, the rest by hand at the demo"
+    },
+    {
+      "id": "NFR7.21",
+      "status": "OK",
+      "target": "performance-design P28 tick boxes for coarse pointers; a touch test"
+    },
+    {
+      "id": "NFR7.22",
+      "status": "OK",
+      "target": "performance-design P28 long names wrap, breadcrumb collapses"
+    },
+    {
+      "id": "NFR8.20",
+      "status": "OK",
+      "target": "performance-design P29 existing styles carried over with the accepted changes"
+    },
+    {
+      "id": "NFR8.21",
+      "status": "OK",
+      "target": "performance-design P25 icons bundled with the page"
+    },
+    {
+      "id": "NFR2.20",
+      "status": "OK",
+      "target": "security-design S25 the server's database user can only read; operations list is GET only"
+    },
+    {
+      "id": "NFR2.21",
+      "status": "OK",
+      "target": "security-design S25 no operation references the change step or the name operations"
+    },
+    {
+      "id": "NFR2.22",
+      "status": "OK",
+      "target": "security-design S31 loader wired for test only and refuses production itself"
+    },
+    {
+      "id": "NFR2.23",
+      "status": "OK",
+      "target": "security-design S32 the folder operation never looks at a session"
+    },
+    {
+      "id": "NFR3.20",
+      "status": "OK",
+      "target": "security-design S20 one function recognises a folder identifier before anything else"
+    },
+    {
+      "id": "NFR3.21",
+      "status": "OK",
+      "target": "security-design S21 the version header is bounded, the weak marker removed, foreign values ignored"
+    },
+    {
+      "id": "NFR3.22",
+      "status": "OK",
+      "target": "security-design S30 fixed statements with numbered parameters"
+    },
+    {
+      "id": "NFR3.23",
+      "status": "OK",
+      "target": "security-design S29 names as text only, never in an address"
+    },
+    {
+      "id": "NFR3.24",
+      "status": "OK",
+      "target": "security-design S23 one module for names, sameness decided by the database alone"
+    },
+    {
+      "id": "NFR3.25",
+      "status": "OK",
+      "target": "security-design S26 the walk stops at 64 levels"
+    },
+    {
+      "id": "NFR3.26",
+      "status": "OK",
+      "target": "security-design S24 one function makes the not-found answer"
+    },
+    {
+      "id": "NFR3.27",
+      "status": "OK",
+      "target": "security-design S24 answers built from a list of named fields"
+    },
+    {
+      "id": "NFR5.20",
+      "status": "OK",
+      "target": "security-design S29; observability-design O20 and O23 no name and no raw database message in any entry"
+    },
+    {
+      "id": "NFR5.2",
+      "status": "OK",
+      "target": "security-design, carried without change: U1's request log and its scrubbing"
+    },
+    {
+      "id": "NFR2.24",
+      "status": "OK",
+      "target": "security-design S22 identifiers generated at random by the database"
+    },
+    {
+      "id": "NFR2.25",
+      "status": "OK",
+      "target": "security-design S28 answers marked not to be stored; the edge keeps nothing under /v1"
+    },
+    {
+      "id": "NFR1.20",
+      "status": "OK",
+      "target": "security-design, carried without change: no library added, icons bundled"
+    },
+    {
+      "id": "NFR4.20",
+      "status": "OK",
+      "target": "security-design, carried without change: same encrypted database and verified connection"
+    },
+    {
+      "id": "NFR5.21",
+      "status": "OK",
+      "target": "security-design, carried without change: no personal data in this Unit"
+    },
+    {
+      "id": "NFR11.3",
+      "status": "OK",
+      "target": "security-design, carried without change: the entry point's one request limit"
+    },
+    {
+      "id": "NFR11.20",
+      "status": "OK",
+      "target": "scalability-design C20 every statement goes through an index"
+    },
+    {
+      "id": "NFR11.22",
+      "status": "OK",
+      "target": "scalability-design C22 no new resource with a monthly charge, no new series"
+    },
+    {
+      "id": "NFR11.1",
+      "status": "OK",
+      "target": "scalability-design C22 the cost estimate gains no line"
+    },
+    {
+      "id": "NFR11.23",
+      "status": "OK",
+      "target": "scalability-design C23 single statements on the one kept connection"
+    },
+    {
+      "id": "NFR11.5",
+      "status": "OK",
+      "target": "scalability-design C23 U1's one connection per copy"
+    },
+    {
+      "id": "NFR11.24",
+      "status": "OK",
+      "target": "scalability-design C22 at most 1,000 sample items, no contents"
+    },
+    {
+      "id": "NFR11.25",
+      "status": "OK",
+      "target": "scalability-design C24 reading takes no lock"
+    },
+    {
+      "id": "NFR11.26",
+      "status": "OK",
+      "target": "scalability-design C25 the cheap unchanged answer and the outcome field handed to U5"
+    },
+    {
+      "id": "NFR10.20",
+      "status": "OK",
+      "target": "reliability-design R23 U1's 3-second deadline; nothing partial is sent"
+    },
+    {
+      "id": "NFR10.4",
+      "status": "OK",
+      "target": "reliability-design R23 U1's deadline applies to the folder request"
+    },
+    {
+      "id": "NFR10.21",
+      "status": "OK",
+      "target": "reliability-design R23 could-not-load state after the shared call function gives up"
+    },
+    {
+      "id": "NFR10.22",
+      "status": "OK",
+      "target": "reliability-design R23 a failed refresh changes nothing on screen"
+    },
+    {
+      "id": "NFR10.23",
+      "status": "OK",
+      "target": "reliability-design R23 answers numbered, late ones dropped"
+    },
+    {
+      "id": "NFR10.24",
+      "status": "OK",
+      "target": "reliability-design R20 the full answer is one statement"
+    },
+    {
+      "id": "NFR10.25",
+      "status": "OK",
+      "target": "reliability-design R22 rules declared in the table's structure, one test each"
+    },
+    {
+      "id": "NFR10.27",
+      "status": "OK",
+      "target": "reliability-design R21 the folder's row is locked for the step"
+    },
+    {
+      "id": "NFR10.26",
+      "status": "OK",
+      "target": "reliability-design R21 the change step is one transaction"
+    },
+    {
+      "id": "NFR14.20",
+      "status": "OK",
+      "target": "reliability-design R27 the table is in the one backed-up database"
+    },
+    {
+      "id": "NFR10.28",
+      "status": "OK",
+      "target": "reliability-design R24 the database change only adds a table"
+    },
+    {
+      "id": "NFR15.10",
+      "status": "OK",
+      "target": "reliability-design R24 the compatibility check runs U1's tests against the new structure"
+    },
+    {
+      "id": "NFR10.29",
+      "status": "OK",
+      "target": "reliability-design R25 items found again by their source key"
+    },
+    {
+      "id": "NFR10.30",
+      "status": "OK",
+      "target": "reliability-design R24 the loader runs before the server is switched"
+    },
+    {
+      "id": "NFR10.6",
+      "status": "OK",
+      "target": "reliability-design R24 a failed loader leaves the deployment not put in place"
+    },
+    {
+      "id": "NFR15.20",
+      "status": "OK",
+      "target": "reliability-design R26 going back does not touch the database"
+    },
+    {
+      "id": "NFR15.8",
+      "status": "OK",
+      "target": "reliability-design R26 U1's going back, rehearsed again with U3 deployed"
+    },
+    {
+      "id": "NFR15.21",
+      "status": "OK",
+      "target": "reliability-design R27 no new hand procedure"
+    },
+    {
+      "id": "NFR10.31",
+      "status": "OK",
+      "target": "reliability-design R28 the folder is written to and read from the address"
+    }
+  ]
+}

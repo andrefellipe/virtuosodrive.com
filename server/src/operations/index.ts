@@ -1,6 +1,7 @@
 import type { Database } from "../db/database.ts";
 import type { Operation } from "../http/operation.ts";
 import type { Environment } from "../log/entry.ts";
+import { folderOperation } from "./folder.ts";
 import { forcedFailureOperation } from "./forced-failure.ts";
 import { healthOperation } from "./health.ts";
 import { siteInformationOperation } from "./site-information.ts";
@@ -15,8 +16,12 @@ export interface OperationSettings {
 
 /**
  * The one declared list of operations. The request steps route from it; a
- * test reads it to check that every operation of this Unit is a GET, and
- * another checks it against the OpenAPI description.
+ * test reads it to check that every operation is a GET, and another checks
+ * it against the OpenAPI description.
+ *
+ * The name operations and the change step of the Drive module are not in
+ * this list and are reached from no operation (security design S25): in U3
+ * the server only reads.
  */
 export function contractOperations(settings: OperationSettings): Operation[] {
   return [
@@ -25,6 +30,7 @@ export function contractOperations(settings: OperationSettings): Operation[] {
       version: settings.version,
       environment: settings.environment,
     }),
+    folderOperation(settings.database),
   ];
 }
 

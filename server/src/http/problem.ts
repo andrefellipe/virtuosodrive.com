@@ -1,3 +1,5 @@
+import type { Fault } from "../log/fault.ts";
+
 /**
  * The one shape every failure answer takes (contract C1). A Problem carries a
  * code and nothing internal: no name, address, query or stack trace. The
@@ -30,7 +32,9 @@ const DEFINITIONS: Record<ProblemCode, ProblemDefinition> = {
   notFound: {
     status: 404,
     title: "Not found",
-    detail: "There is no such operation.",
+    // One text for an unknown address and for a folder that is unknown,
+    // deleted or hidden: the answers must not differ (security design S24).
+    detail: "There is nothing at this address.",
   },
   serverError: {
     status: 500,
@@ -69,15 +73,18 @@ export function problem(code: ProblemCode, status?: number): Problem {
 export class OperationFailure extends Error {
   readonly code: ProblemCode;
   readonly status: number;
+  /** The named fault this failure is, when it is one (observability design O22). */
+  readonly fault: Fault | undefined;
 
   constructor(
     code: ProblemCode,
     internalReason: string,
-    options: { status?: number; cause?: unknown } = {},
+    options: { status?: number; cause?: unknown; fault?: Fault } = {},
   ) {
     super(internalReason, { cause: options.cause });
     this.name = "OperationFailure";
     this.code = code;
     this.status = options.status ?? DEFINITIONS[code].status;
+    this.fault = options.fault;
   }
 }

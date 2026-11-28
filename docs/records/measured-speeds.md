@@ -15,6 +15,21 @@ figures are the baseline every later Unit is compared with.
 | NFR9.1      | Site information from a real connection in Brazil, 10 calls                                | recorded only      | Owed                                                    |            | By the maintainer, from a connection in Brazil                                                                                                                                        |
 | NFR9.5      | The page's files, compressed (printed by the build)                                        | at most 300 KB     | 75,302 bytes (about 74 KB)                              | 2026-11-27 | Printed by the pipeline's build of Release `1db1c19`: https://github.com/andrefellipe/virtuosodrive.com/actions/runs/45932874039 . A build on the maintainer's machine printed 75,321 |
 
+## Browsing (Unit U3)
+
+Rows added on 2026-11-27, with the code of Unit U3, and not yet measured:
+each needs the Unit deployed to the test environment with its sample
+content (observability design O25).
+
+| Requirement | What is measured                                                                                                                             | Target                                       | Measured | Date | How                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| NFR9.20     | Opening the sample folder "Five hundred items" from a connection in Brazil, server warm: five timed opens; all five figures are written here | the middle one of the five at most 2 seconds | Owed     |      | By the maintainer, in a browser's tools, in the test environment                                                                                 |
+| NFR9.27     | The first folder request after 30 minutes of quiet                                                                                           | at most 5 seconds                            | Owed     |      | One request after 30 minutes with no traffic in test, by hand                                                                                    |
+| NFR9.21     | 95th of 100 requests for that folder, as the server itself reports them (the `Server-Timing` header)                                         | at most 500 ms                               | Owed     |      | The pipeline's gate "folder speed", printed on every merge; the first figure is copied here from the first `deliver` run with Unit U3            |
+| NFR9.25     | The page showing 500 rows, and updating the selection of a range across all of them, with the browser's tools set to a slowed processor      | each within 200 ms                           | Owed     |      | By the maintainer, in a browser's developer tools; the setting used is written with the figures                                                  |
+| NFR9.26     | The page's files, compressed, with the folder screen and the icons in them (printed by the build)                                            | at most 300 KB                               | Owed     |      | Printed by the pipeline's build of the first Release with Unit U3. A build on the developer's machine printed 93,859 bytes on 2026-11-27         |
+| NFR11.20    | How the database carries out each of Unit U3's statements on a table of 50,000 items: its own account (`EXPLAIN`), kept here word for word   | every one by an index                        | Owed     |      | Once, against a database loaded with 50,000 items, for the walk, the full statement, the name check, the lowest free name, and the next position |
+
 Also checked once by hand: the page in Edge and in the previous version of
 each browser.
 

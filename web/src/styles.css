@@ -72,7 +72,366 @@ body {
   border-color: #033f78;
 }
 
-.button:focus-visible {
-  outline: 3px solid #f5a623;
+/*
+ * The folder screen (Unit U3). The old site's styles for the breadcrumb, the
+ * action row and the list (app/public/css/style.css, with what it took from
+ * Bootstrap 4) are carried over here, with the accepted changes of the
+ * design: (1) a check mark at the start of each selected row; (3) a visible
+ * focus ring on every control and row; (4) text on the page can be selected
+ * again, so the old "user-select: none" is not carried over; (6) the action
+ * links are buttons that look the same; (7) primary buttons use #0454a0.
+ *
+ * Colours, with their contrast (WCAG 2.1; 3 : 1 is needed for a focus ring
+ * and for a mark, 4.5 : 1 for text):
+ *   focus ring  #0454a0   7.55 : 1 on white, 5.83 : 1 on a selected row
+ *   check mark  #000000  21.00 : 1 on white, 16.20 : 1 on a selected row
+ *   text        #000000  on a selected row (#99f0fa): 16.20 : 1
+ *   muted text  #555555   7.46 : 1 on white
+ * The ring was #f5a623 in U1, which is only 2.03 : 1 on white; it is #0454a0
+ * for every control now.
+ */
+
+/* Every control and row shows where the keyboard is (design change 3). */
+.button:focus-visible,
+.plain-button:focus-visible,
+.plain-link:focus-visible,
+.action-button:focus-visible,
+.breadcrumb a:focus-visible,
+.file-list:focus-visible,
+.file-row:focus-visible,
+.file-tick:focus-visible {
+  outline: 3px solid #0454a0;
   outline-offset: 2px;
+}
+
+.file-row:focus-visible {
+  /* Inside the row, so that the ring is not cut off by the table's edge. */
+  outline-offset: -3px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.plain-button {
+  font: inherit;
+  color: #000;
+  background: none;
+  border: 1px solid #555;
+  border-radius: 0.25rem;
+  padding: 0.15rem 0.6rem;
+  cursor: pointer;
+}
+
+.plain-link {
+  color: #0454a0;
+  text-decoration: underline;
+}
+
+/* --- Breadcrumb: Bootstrap's, with a white background, as before --- */
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background-color: #fff;
+  border-radius: 0.25rem;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+  content: "/";
+  padding: 0 0.5rem;
+  color: #555;
+}
+
+.breadcrumb a {
+  color: #000;
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb [aria-current="page"] {
+  color: #555;
+}
+
+/* --- The action row --- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px dashed #ccc;
+  margin-bottom: 20px;
+}
+
+.action-button {
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  margin: 0.25rem;
+  font: inherit;
+  color: #000;
+  background: none;
+  border: 0;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  background-color: #f2f2f2;
+}
+
+/* --- The status line: always there, even when it says nothing --- */
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.status-line-text {
+  margin: 0;
+  color: #555;
+  overflow-wrap: anywhere;
+}
+
+/* --- The list --- */
+
+.file-list {
+  /* Its own focus ring shows only when the keyboard put the focus on it. */
+  border-radius: 0.25rem;
+}
+
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.file-table thead {
+  border-bottom: 1px solid #ccc;
+}
+
+.file-table th,
+.file-table td {
+  padding: 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.file-table th {
+  font-weight: bold;
+}
+
+.file-mark {
+  width: 3rem;
+}
+
+.file-kind {
+  width: 4rem;
+}
+
+.file-table th:last-child,
+.file-size {
+  width: 8rem;
+}
+
+.file-row {
+  cursor: pointer;
+}
+
+.file-row.selected {
+  background-color: #99f0fa;
+}
+
+/* Long names wrap inside their cell and never widen the page. */
+.file-name {
+  overflow-wrap: anywhere;
+}
+
+.file-size {
+  white-space: nowrap;
+}
+
+/* With a mouse on a wide screen: no tick box, and the check mark shows. */
+.file-tick {
+  display: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+}
+
+.file-check {
+  display: block;
+}
+
+.file-list-note {
+  padding: 1.5rem 0.75rem;
+}
+
+.file-list-note p {
+  margin: 0 0 0.75rem;
+}
+
+/* Placeholder rows while a folder's contents are fetched for the first time. */
+.placeholder-block {
+  display: block;
+  height: 1rem;
+  max-width: 60%;
+  background-color: #ddd;
+  border-radius: 0.25rem;
+}
+
+.placeholder-icon {
+  width: 30px;
+  height: 30px;
+  max-width: none;
+}
+
+.placeholder-short {
+  max-width: 4rem;
+}
+
+/* Movement only when the device has not asked for less of it. */
+@media (prefers-reduced-motion: no-preference) {
+  .placeholder-block {
+    animation: placeholder-pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes placeholder-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/*
+ * Touch devices of any width, and every device below 768 pixels: a tick box
+ * starts each row and is itself the mark of a selected row; everything that
+ * can be tapped is at least 44 by 44 pixels.
+ */
+@media (pointer: coarse), (max-width: 767.98px) {
+  .file-tick {
+    display: block;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+  }
+
+  .file-check {
+    display: none;
+  }
+
+  .file-mark {
+    width: 60px;
+    padding: 0.25rem;
+  }
+
+  .action-button,
+  .plain-button,
+  .plain-link,
+  .button,
+  .breadcrumb a,
+  .breadcrumb [aria-current="page"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .plain-link,
+  .breadcrumb a,
+  .breadcrumb [aria-current="page"] {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* Below 768 pixels: actions two to a line; each row stacks the name over the size. */
+@media (max-width: 767.98px) {
+  .action-button {
+    flex: 1 1 calc(50% - 0.5rem);
+  }
+
+  .breadcrumb {
+    padding: 0.5rem 0;
+  }
+
+  .file-table thead {
+    /* The headings stay for assistive technology; the stacked rows need no column titles. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .file-table,
+  .file-table tbody {
+    display: block;
+  }
+
+  .file-row,
+  .file-placeholder {
+    display: grid;
+    grid-template-columns: 60px 44px minmax(0, 1fr);
+    grid-template-areas:
+      "mark kind name"
+      "mark kind size";
+    align-items: center;
+    border-bottom: 1px solid #eee;
+  }
+
+  .file-table td {
+    padding: 0.25rem 0.5rem;
+  }
+
+  .file-table td.file-mark {
+    grid-area: mark;
+    width: auto;
+  }
+
+  .file-table td.file-kind {
+    grid-area: kind;
+    width: auto;
+    padding: 0.25rem;
+  }
+
+  .file-table td.file-name {
+    grid-area: name;
+  }
+
+  .file-table td.file-size {
+    grid-area: size;
+    width: auto;
+    color: #555;
+    font-size: 0.875rem;
+  }
 }

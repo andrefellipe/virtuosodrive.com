@@ -8,7 +8,13 @@
  *   - a 503 or a 429 is worth another try, whether or not its body is a Problem;
  *   - a 401 that is not a Problem means the access password is needed: the
  *     page is reloaded, which shows the password page, and nothing is retried;
- *   - every other Problem answer is final.
+ *   - every other Problem answer is final;
+ *   - a caller may pass the version it holds of what it asks for. The server
+ *     may then answer "unchanged" (304, no content), which is a third
+ *     outcome beside success and failure: never retried, never a failure.
+ *     A success hands back the version that came with it (performance
+ *     design P23). The browser's own store is not involved: the page keeps
+ *     the version itself, and still tells the browser not to store answers.
  *
  * Later Units use the same function; change operations never retry.
  */
@@ -17,11 +23,22 @@ export const REQUEST_LIMIT_MS = 10_000;
 export const RETRY_PAUSES_MS: readonly number[] = [1_000, 3_000];
 export const PROBLEM_CONTENT_TYPE = "application/problem+json";
 const REQUEST_ID_HEADER = "X-Request-Id";
+const VERSION_HELD_HEADER = "If-None-Match";
+const VERSION_HEADER = "ETag";
+const UNCHANGED = 304;
 
 export type ReadResult<T> =
-  | { kind: "answered"; data: T; requestId: string }
+  /** `version` is what the server sent with the answer, when it sent one. */
+  | { kind: "answered"; data: T; requestId: string; version?: string }
+  /** The caller already holds the current version; there is no content. */
+  | { kind: "unchanged"; requestId: string }
   | { kind: "failed"; requestId: string; problemCode?: string }
   | { kind: "accessNeeded" };
+
+export interface ReadOptions {
+  /** The version the caller holds, exactly as the server sent it. */
+  heldVersion?: string;
+}
 
 export interface CallEnvironment {
   fetch: typeof fetch;
@@ -69,6 +86,7 @@ async function attempt<T>(
   path: string,
   parse: (body: unknown) => T | undefined,
   environment: CallEnvironment,
+  heldVersion: string | undefined,
 ): Promise<Attempt<T>> {
   const sentId = environment.newRequestId();
   const abort = new AbortController();
@@ -77,7 +95,13 @@ async function attempt<T>(
   try {
     response = await environment.fetch(path, {
       method: "GET",
-      headers: { Accept: "application/json", [REQUEST_ID_HEADER]: sentId },
+      headers: {
+        Accept: "application/json",
+        [REQUEST_ID_HEADER]: sentId,
+        ...(heldVersion === undefined
+          ? {}
+          : { [VERSION_HELD_HEADER]: heldVersion }),
+      },
       cache: "no-store",
       credentials: "same-origin",
       signal: abort.signal,
@@ -98,6 +122,10 @@ async function attempt<T>(
   if (response.status === 503 || response.status === 429) {
     return { next: "retry", requestId };
   }
+  if (response.status === UNCHANGED && heldVersion !== undefined) {
+    // What the caller holds is current. Not a failure, and nothing to retry.
+    return { next: "done", result: { kind: "unchanged", requestId } };
+  }
   if (!response.ok) {
     const code = await problemCode(response);
     return {
@@ -116,31 +144,43 @@ async function attempt<T>(
   } catch {
     data = undefined;
   }
+  if (data === undefined) {
+    return { next: "done", result: { kind: "failed", requestId } };
+  }
+  const version = response.headers.get(VERSION_HEADER);
   return {
     next: "done",
-    result:
-      data === undefined
-        ? { kind: "failed", requestId }
-        : { kind: "answered", data, requestId },
+    result: {
+      kind: "answered",
+      data,
+      requestId,
+      ...(version === null ? {} : { version }),
+    },
   };
 }
 
 /**
  * Reads from the server. "parse" turns the answer's body into the expected
  * shape, or answers undefined if it is not that shape; unknown fields are
- * ignored. Never rejects.
+ * ignored. With `heldVersion`, the outcome may be "unchanged". Never rejects.
  */
 export async function readFromServer<T>(
   path: string,
   parse: (body: unknown) => T | undefined,
   environment: CallEnvironment = browser,
+  options: ReadOptions = {},
 ): Promise<ReadResult<T>> {
   let lastRequestId = "";
   for (let tries = 0; tries <= RETRY_PAUSES_MS.length; tries += 1) {
     if (tries > 0) {
       await environment.wait(RETRY_PAUSES_MS[tries - 1] as number);
     }
-    const outcome = await attempt(path, parse, environment);
+    const outcome = await attempt(
+      path,
+      parse,
+      environment,
+      options.heldVersion,
+    );
     if (outcome.next === "done") {
       return outcome.result;
     }

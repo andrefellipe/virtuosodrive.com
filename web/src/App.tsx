@@ -1,7 +1,11 @@
 import logo from "./assets/af.png";
-import { SiteStatus } from "./status/SiteStatus.tsx";
+import { FolderScreen } from "./folder/FolderScreen.tsx";
 
-/** The thin slice's one page: the site's name and logo, and the status of its server. */
+/**
+ * The page: the site's name and logo, and the folder the address names.
+ * The thin slice's status view (status/SiteStatus.tsx) is no longer shown;
+ * it stays in the code, with its tests, as the example of a part of the page.
+ */
 export function App() {
   return (
     <div className="page">
@@ -10,7 +14,7 @@ export function App() {
         <h1>Virtuoso Drive</h1>
       </header>
       <main>
-        <SiteStatus />
+        <FolderScreen />
       </main>
     </div>
   );

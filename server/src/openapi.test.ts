@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Database } from "./db/database.ts";
+import { pathParameterNames } from "./http/operation.ts";
 import { PROBLEM_CODES } from "./http/problem.ts";
 import { contractOperations } from "./operations/index.ts";
 
@@ -53,6 +54,42 @@ function describedOperations(text: string): DescribedOperation[] {
   return operations;
 }
 
+/**
+ * The names of the parameters each described operation declares "in: path",
+ * read the same plain way: under an operation, a parameter starts with
+ * "- name:" indented eight spaces, and its "in:" follows indented ten.
+ */
+function describedPathParameters(text: string): Map<string, string[]> {
+  const parameters = new Map<string, string[]>();
+  let inPaths = false;
+  let path = "";
+  let name: string | undefined;
+  for (const line of text.split("\n")) {
+    if (/^\S/.test(line)) {
+      inPaths = line.startsWith("paths:");
+      continue;
+    }
+    if (!inPaths) {
+      continue;
+    }
+    const pathKey = /^ {2}(\/\S*):\s*$/.exec(line);
+    const parameterName = /^ {8}- name:\s*(\S+)\s*$/.exec(line);
+    const parameterPlace = /^ {10}in:\s*(\S+)\s*$/.exec(line);
+    if (pathKey?.[1] !== undefined) {
+      path = pathKey[1];
+      parameters.set(path, []);
+    } else if (parameterName?.[1] !== undefined) {
+      name = parameterName[1];
+    } else if (parameterPlace?.[1] !== undefined) {
+      if (parameterPlace[1] === "path" && name !== undefined) {
+        parameters.get(path)?.push(name);
+      }
+      name = undefined;
+    }
+  }
+  return parameters;
+}
+
 function problemCodes(text: string): string[] {
   const lines = text.split("\n");
   const start = lines.findIndex((line) => /^ {4}Problem:\s*$/.test(line));
@@ -102,6 +139,35 @@ describe("the OpenAPI description", () => {
     expect(described.length).toBeGreaterThan(0);
     expect(described).toEqual(declared);
     expect(text).toContain("- url: https://virtuoso.andrefellipelabs.com/v1");
+  });
+
+  it("declares, for every path with named parts, exactly those parts as path parameters, and none for a path without", () => {
+    const declared = contractOperations({
+      database: new Database(
+        {
+          host: "db.example.com",
+          port: 5432,
+          database: "virtuoso",
+          user: "app",
+          caCertificate: "",
+        },
+        () => Promise.reject(new Error("not used in this test")),
+      ),
+      version: "a1b2c3d",
+      environment: "test",
+      forcedFailure: false,
+    });
+    const described = describedPathParameters(text);
+
+    expect(declared.some((operation) => operation.path.includes("{"))).toBe(
+      true,
+    );
+    for (const operation of declared) {
+      const path = operation.path.slice(SERVER_PREFIX.length);
+      expect(described.get(path)).toEqual(pathParameterNames(operation.path));
+    }
+    expect(described.get("/folders/{folderId}")).toEqual(["folderId"]);
+    expect(described.get("/health")).toEqual([]);
   });
 
   it("lists exactly the Problem codes the server answers with, and the Problem's required fields", () => {

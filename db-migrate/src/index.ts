@@ -9,9 +9,12 @@ import { Signer } from "@aws-sdk/rds-signer";
 import { Client } from "pg";
 import { loadConfig, parseMasterSecret } from "./config.ts";
 import type { RunnerConfig } from "./config.ts";
+import { decideMode } from "./mode.ts";
 import { CREATE_USERS_FILE, MIGRATIONS_DIR, REHEARSAL_DIR } from "./paths.ts";
 import { runChanges } from "./runner.ts";
 import type { RunReport } from "./runner.ts";
+import { loadSamples } from "./samples/loader.ts";
+import type { SampleSummary } from "./samples/loader.ts";
 import { SIGN_IN_TRY_LIMIT_MS, signIn } from "./sign-in.ts";
 import type { Credentials } from "./sign-in.ts";
 
@@ -21,6 +24,9 @@ import type { Credentials } from "./sign-in.ts";
  * of the server is put in place.
  *
  * How patiently it signs in to the database is in `sign-in.ts`.
+ *
+ * It has two modes (`mode.ts`): applying database changes, and, in the test
+ * environment only, loading the prepared sample content (`samples/`).
  */
 
 const CA_FILE = fileURLToPath(
@@ -98,8 +104,39 @@ function connectAsMaster(config: RunnerConfig): Promise<Client> {
   });
 }
 
-export async function handler(): Promise<RunReport> {
+/**
+ * The second mode: load the prepared sample content (test environment only).
+ * The summary is written as one line of structured text, so that it can be
+ * searched in this function's plain-text log; it is also the function's
+ * answer, which the deployment prints. It holds counts, and for a failure
+ * the sample entry's key and the kind of failure: never a name, and never
+ * the database's own error text.
+ */
+async function loadSampleContent(config: RunnerConfig): Promise<SampleSummary> {
+  return loadSamples({
+    environment: config.environment,
+    connect: () => connectAsMigrator(config),
+    log: (summary) => {
+      if (summary.failed === undefined) {
+        logger.info("Sample content loaded", { ...summary });
+      } else {
+        logger.error("Sample content could not be loaded", { ...summary });
+      }
+    },
+  });
+}
+
+/**
+ * One run. The pipeline's input says which mode; a missing or empty input,
+ * or one naming no mode, applies database changes, as before (mode.ts).
+ */
+export async function handler(
+  input?: unknown,
+): Promise<RunReport | SampleSummary> {
   const config = loadConfig(process.env);
+  if (decideMode(input) === "loadSamples") {
+    return loadSampleContent(config);
+  }
   try {
     const report = await runChanges({
       connectAsMigrator: () => connectAsMigrator(config),

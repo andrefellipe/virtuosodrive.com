@@ -1,18 +1,27 @@
+import { GATES } from "./gates.ts";
+import type { GateName } from "./gates.ts";
 import { measure } from "./measure.ts";
 import { runSmokeCheck } from "./smoke-check.ts";
 
 /**
  * The command line for the pipeline's checks of a deployed environment.
  *
- *   node scripts/src/cli.ts smoke      the smoke check
- *   node scripts/src/cli.ts measure    the 100-call measurement, at most
- *                                      8 calls a second (about 15 seconds)
+ *   node scripts/src/cli.ts smoke        the smoke check
+ *   node scripts/src/cli.ts measure      the 100-call measurement, at most
+ *                                        8 calls a second (about 15 seconds)
+ *   node scripts/src/cli.ts gate <name>  one gate of browsing: unchanged,
+ *                                        compressed, speed or not-stored
+ *                                        (test environment, sample content)
  *
- * Both read:
+ * All read:
  *   VD_BASE_URL          the environment's address, with https://
  *   VD_ACCESS_PASSWORD   its access password (never printed)
  *   VD_ENVIRONMENT       test or production
  *   VD_EXPECTED_VERSION  for smoke: the version that must be running (optional)
+ *   VD_HAS_BROWSING      for smoke: "yes" when the Release under check has
+ *                        browsing, so that the top folder is asked for too.
+ *                        Left out, the folder is not asked for: the check
+ *                        may be looking at a Release older than browsing.
  */
 
 export interface CliTools {
@@ -50,6 +59,7 @@ async function smoke(settings: Settings, tools: CliTools): Promise<boolean> {
     ...(expectedVersion === undefined || expectedVersion === ""
       ? {}
       : { expectedVersion }),
+    hasBrowsing: settings.VD_HAS_BROWSING === "yes",
     fetch: tools.fetch,
     wait: tools.wait,
   });
@@ -93,11 +103,47 @@ async function measureCalls(
   return result.passed;
 }
 
+async function gate(
+  name: string | undefined,
+  settings: Settings,
+  tools: CliTools,
+): Promise<boolean> {
+  if (name === undefined || !Object.hasOwn(GATES, name)) {
+    throw new Error(
+      `Usage: node scripts/src/cli.ts gate <${Object.keys(GATES).join("|")}>`,
+    );
+  }
+  if (environmentName(settings) !== "test") {
+    // The gates rest on the sample content, which production never has.
+    throw new Error("The gates of browsing run against the test environment");
+  }
+  const result = await GATES[name as GateName]({
+    baseUrl: required(settings, "VD_BASE_URL"),
+    accessPassword: required(settings, "VD_ACCESS_PASSWORD"),
+    fetch: tools.fetch,
+    now: tools.now,
+    wait: tools.wait,
+  });
+  for (const line of result.report) {
+    tools.out(line);
+  }
+  if (result.ok) {
+    tools.out(`Gate "${name}" passed.`);
+  } else {
+    tools.err(`Gate "${name}" failed:`);
+    for (const failure of result.failures) {
+      tools.err(`  - ${failure}`);
+    }
+  }
+  return result.ok;
+}
+
 /** Runs one command; answers the exit code: 0 passed, 1 failed, 2 could not run. */
 export async function runCommand(
   command: string | undefined,
   settings: Settings,
   tools: CliTools,
+  argument?: string,
 ): Promise<number> {
   try {
     if (command === "smoke") {
@@ -106,7 +152,10 @@ export async function runCommand(
     if (command === "measure") {
       return (await measureCalls(settings, tools)) ? 0 : 1;
     }
-    throw new Error("Usage: node scripts/src/cli.ts <smoke|measure>");
+    if (command === "gate") {
+      return (await gate(argument, settings, tools)) ? 0 : 1;
+    }
+    throw new Error("Usage: node scripts/src/cli.ts <smoke|measure|gate>");
   } catch (error) {
     tools.err(error instanceof Error ? error.message : String(error));
     return 2;
@@ -114,11 +163,16 @@ export async function runCommand(
 }
 
 if (process.argv[1] === import.meta.filename) {
-  process.exitCode = await runCommand(process.argv[2], process.env, {
-    fetch,
-    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    now: () => performance.now(),
-    out: console.log,
-    err: console.error,
-  });
+  process.exitCode = await runCommand(
+    process.argv[2],
+    process.env,
+    {
+      fetch,
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      now: () => performance.now(),
+      out: console.log,
+      err: console.error,
+    },
+    process.argv[3],
+  );
 }

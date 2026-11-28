@@ -33,8 +33,13 @@ make that figure optimistic:
   runner's first sign-in took 19.2 seconds; its new 30 seconds and second
   try are proved by unit tests only, not by a run against AWS.
 - The server's first call to the copy failed (503 after 2.3 seconds), and
-  the smoke check passed only at its second attempt. A person opening the
-  site in those seconds would have been shown an error.
+  the smoke check after the infrastructure change passed only at its second
+  attempt. A person opening the site in those seconds would probably have
+  been shown an error. That is inferred from the code and the log, and was
+  not tried in a browser: the 503 was the health check's answer; site
+  information answers a database failure with a 500, which the page does
+  not try again; and how long the window lasted is not known (the next
+  attempt of the smoke check came about 10 seconds later).
 - Nobody opened the page in a browser while it answered from the copy.
 
 ## First attempt, 2026-11-27: the copy was not made in time

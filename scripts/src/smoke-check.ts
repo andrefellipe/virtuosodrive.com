@@ -7,7 +7,17 @@
  *   - site information answers, in the expected environment and, when a
  *     version is expected, with that version;
  *   - the page loads and, when a version is expected, points at that
- *     Release's files.
+ *     Release's files;
+ *   - only when the caller says the Release under check has browsing: the
+ *     top folder answers, with an answer of the right shape.
+ *
+ * One command serves three uses, and they must not be confused (pipeline
+ * design of Unit U3). The check of a newly switched Release says it has
+ * browsing. The check after an infrastructure change, and the check after
+ * going back, look at a Release that may be older than browsing and has no
+ * folder route: asked for a folder it would answer "not found", and a sound
+ * deployment would be reported as failing. So the folder is asked for only
+ * when `hasBrowsing` is given.
  *
  * A just-deployed environment may need a moment, so the whole check is tried
  * a few times before it is reported as failed.
@@ -20,6 +30,8 @@ export interface SmokeCheckOptions {
   expectedEnvironment: "test" | "production";
   /** Omitted when checking whatever is running (after an infrastructure change). */
   expectedVersion?: string;
+  /** Whether the Release under check has browsing. Default: it is not asked for a folder. */
+  hasBrowsing?: boolean;
   fetch: typeof fetch;
   wait: (ms: number) => Promise<void>;
   attempts?: number;
@@ -113,12 +125,47 @@ async function checkPage(options: SmokeCheckOptions): Promise<string[]> {
   return failures;
 }
 
+/**
+ * The top folder, "All": an answer of the right shape. In production the
+ * list is empty until the migration, so nothing is expected of the items but
+ * that they are a list.
+ */
+async function checkTopFolder(options: SmokeCheckOptions): Promise<string[]> {
+  const response = await get(options, "/v1/folders/root", true);
+  if (response.status !== 200) {
+    return [`the top folder answered ${response.status}, expected 200`];
+  }
+  const body = (await response.json()) as {
+    folderId?: unknown;
+    name?: unknown;
+    path?: unknown;
+    items?: unknown;
+  };
+  const failures: string[] = [];
+  if (typeof body.folderId !== "string" || body.folderId === "") {
+    failures.push("the top folder's answer has no folder identifier");
+  }
+  if (body.name !== "All") {
+    failures.push('the top folder is not named "All"');
+  }
+  if (!Array.isArray(body.path) || body.path.length !== 1) {
+    failures.push("the top folder's path is not one step long");
+  }
+  if (!Array.isArray(body.items)) {
+    failures.push("the top folder's answer has no list of items");
+  }
+  return failures;
+}
+
 async function attempt(options: SmokeCheckOptions): Promise<string[]> {
   const failures: string[] = [];
   for (const [name, check] of [
     ["health", checkHealth],
     ["site information", checkSiteInformation],
     ["the page", checkPage],
+    ...(options.hasBrowsing === true
+      ? ([["the top folder", checkTopFolder]] as const)
+      : []),
   ] as const) {
     try {
       failures.push(...(await check(options)));

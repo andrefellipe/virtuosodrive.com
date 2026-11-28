@@ -27,6 +27,43 @@ export interface Queryable {
   ): Promise<{ rows: Row[] }>;
 }
 
+/** What a piece of work running as one transaction is given. */
+export interface TransactionConnection extends Queryable {
+  /**
+   * Milliseconds left of the deadline the transaction runs under; undefined
+   * when it runs under none (the change runner's own connection).
+   */
+  remainingMs(): number | undefined;
+}
+
+/**
+ * Something that can run a piece of work as one transaction: all of it
+ * happens, or none of it. The server's database access is one; the change
+ * runner has its own, on its own connection.
+ */
+export interface Transactions {
+  transaction<T>(
+    work: (connection: TransactionConnection) => Promise<T>,
+  ): Promise<T>;
+}
+
+/**
+ * Thrown to a piece of work that sends a statement on a transaction that has
+ * already been given up: its deadline passed, or it had failed. Nothing of
+ * such a transaction is kept, so nothing more may be sent on it.
+ */
+export class TransactionAbandonedError extends Error {
+  constructor() {
+    super(
+      "The transaction was given up (its deadline passed or its work failed); no further statement is sent on it",
+    );
+    this.name = "TransactionAbandonedError";
+  }
+}
+
+/** How long a rollback may take before the connection is given up on. */
+const ROLLBACK_LIMIT_MS = 500;
+
 export interface DatabaseOptions {
   deadlineMs?: number;
   connectLimitMs?: number;
@@ -39,7 +76,7 @@ export interface DatabaseOptions {
  * in one request; one reopen if the connection is found broken before a
  * statement is sent. A statement that was sent is never sent a second time.
  */
-export class Database {
+export class Database implements Transactions {
   private client: Client | undefined;
   private broken = false;
   private opened = 0;
@@ -89,6 +126,80 @@ export class Database {
         "The database request",
       );
     } catch (error) {
+      this.discard();
+      throw error;
+    }
+  }
+
+  /**
+   * Runs the work as one transaction on the kept connection, inside the same
+   * single deadline (reliability design R21). If the work fails or the
+   * deadline passes, the transaction is rolled back where the connection
+   * still answers, and in every case the connection is discarded, which
+   * also ends its transaction and releases its locks. No transaction is
+   * ever left open on a connection that is used again.
+   *
+   * The work itself is not stopped when the deadline passes. From the moment
+   * the transaction is given up, every statement it still tries to send is
+   * refused with TransactionAbandonedError, so that none can run after the
+   * rollback and be kept on its own: nothing was changed.
+   */
+  async transaction<T>(
+    work: (connection: TransactionConnection) => Promise<T>,
+  ): Promise<T> {
+    const deadline = startDeadline(
+      this.deadlineMs,
+      this.now,
+      this.connectLimitMs,
+    );
+    let client: Client | undefined;
+    // Set the moment the transaction is given up, before the rollback is
+    // sent. The work is not stopped when the deadline passes: it may still be
+    // running, and a statement it sent after the rollback would run outside
+    // the transaction and be kept on its own. So from then on the connection
+    // handed to the work refuses every statement, and the commit is not sent.
+    let abandoned = false;
+    const refuseIfAbandoned = (): void => {
+      if (abandoned || deadline.expired()) {
+        throw new TransactionAbandonedError();
+      }
+    };
+    try {
+      const connection = await this.usableClient(deadline);
+      client = connection;
+      const queryable: Queryable = connection;
+      const wholeTransaction = async (): Promise<T> => {
+        await connection.query("BEGIN");
+        const result = await work({
+          query: async <Row extends object>(
+            text: string,
+            values?: readonly unknown[],
+          ) => {
+            refuseIfAbandoned();
+            return queryable.query<Row>(text, values);
+          },
+          remainingMs: () => deadline.remainingMs(),
+        });
+        refuseIfAbandoned();
+        await connection.query("COMMIT");
+        return result;
+      };
+      return await withTimeout(
+        wholeTransaction(),
+        deadline.remainingMs(),
+        "The database transaction",
+      );
+    } catch (error) {
+      abandoned = true;
+      if (client !== undefined) {
+        // Best effort: a connection that no longer answers is discarded below,
+        // and the database rolls its transaction back when it goes.
+        await withTimeout(
+          client.query("ROLLBACK"),
+          ROLLBACK_LIMIT_MS,
+          "Rolling back",
+        ).catch(() => undefined);
+      }
       this.discard();
       throw error;
     }
