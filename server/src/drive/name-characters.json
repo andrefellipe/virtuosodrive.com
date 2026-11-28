@@ -1,0 +1,40 @@
+{
+  "description": "The characters the name rules list (security design S23). The server's patterns (server/src/drive/name-patterns.generated.ts) and the database's checks (db-migrate/generated/items-name-checks.sql, repeated in db-migrate/migrations/0002_items.sql) are both generated from this file by scripts/src/name-characters.ts; a repository check fails when either is out of date. Ranges are inclusive code points in hexadecimal.",
+  "unicodeVersion": "18.0",
+  "source": "The Unicode Character Database, version 18.0, as carried by Node.js 24's ICU (process.versions.unicode): every code point with the property White_Space, and every code point of General_Category Cf (Format).",
+  "whiteSpace": [
+    ["0009", "000D"],
+    ["0020", "0020"],
+    ["0085", "0085"],
+    ["00A0", "00A0"],
+    ["1680", "1680"],
+    ["2000", "200A"],
+    ["2028", "2029"],
+    ["202F", "202F"],
+    ["205F", "205F"],
+    ["3000", "3000"]
+  ],
+  "formatting": [
+    ["00AD", "00AD"],
+    ["0600", "0605"],
+    ["061C", "061C"],
+    ["06DD", "06DD"],
+    ["070F", "070F"],
+    ["0890", "0891"],
+    ["08E2", "08E2"],
+    ["180E", "180E"],
+    ["200B", "200F"],
+    ["202A", "202E"],
+    ["2060", "2064"],
+    ["2066", "206F"],
+    ["FEFF", "FEFF"],
+    ["FFF9", "FFFB"],
+    ["110BD", "110BD"],
+    ["110CD", "110CD"],
+    ["13430", "1343F"],
+    ["1BCA0", "1BCA3"],
+    ["1D173", "1D17A"],
+    ["E0001", "E0001"],
+    ["E0020", "E007F"]
+  ]
+}

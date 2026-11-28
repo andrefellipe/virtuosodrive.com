@@ -61,6 +61,13 @@ after the first: for the production resource and the trust definition,
 "refused" is printed only when AWS answers with an explicit deny. All three
 attempts were printed as "refused".
 
+The log of the first run is public, like every workflow log of this
+repository, and it was written before the change that keeps the AWS
+account's number out of the logs (Step 21 of Unit U1's code plan), so it
+shows that number. Whether to delete that run's log is the maintainer's
+decision; how is in `docs/operations.md`, "The AWS account's number in
+workflow logs".
+
 ## Notes
 
 What was unexpected, and what was changed because of it.
@@ -76,3 +83,21 @@ What was unexpected, and what was changed because of it.
   own start).
 - **Not proved here:** the failed-deployment email, which only production's
   job sends, and the budget's own email.
+
+## The saved searches and the view for browsing (Unit U3)
+
+Rows added on 2026-11-27, with the code of Unit U3. Not yet performed: each
+search is run once after the first end-to-end run in the test environment
+with Unit U3 deployed, and its result compared with what that run did
+(monitoring design of Unit U3, "Proving it works"). No alarm is added by
+Unit U3, so there is no alarm to prove.
+
+| What                                                                                                                          | Record |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Date, and the `deliver` run whose end-to-end tests made the requests                                                          |        |
+| "vd-test/folder requests by outcome", for that run's minutes: the count for each outcome                                      |        |
+| At least one each of `answered`, `unchanged` and `notFound` (expected: yes; the tests make each kind)                         |        |
+| "vd-test/folder requests slower than 1 second today": what it listed                                                          |        |
+| The dashboard's view "Folder requests by outcome over time" drew the same counts                                              |        |
+| No entry of those requests held a file's or folder's name (looked at how many entries?)                                       |        |
+| "vd-test/server failures in the last hour" shows the field `fault` for a named fault (only if one occurred; none is provoked) |        |

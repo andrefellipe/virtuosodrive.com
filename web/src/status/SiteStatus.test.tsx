@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App.tsx";
 import type { ReadResult } from "../api/call-server.ts";
 import type { SiteStatusAnswer } from "../api/site-information.ts";
@@ -190,13 +190,24 @@ describe("App", () => {
     cleanup();
   });
 
-  it("shows the site's name and logo around the status", () => {
+  // Changed by U3: the page's first screen is now the folder list, and the
+  // status view above is no longer shown. This test used to assert that the
+  // status line sat inside the page; it asserts the same of the folder screen,
+  // and that the status view is gone from the page.
+  it("shows the site's name and logo around the folder screen, and no longer the status view", () => {
+    // The folder screen asks the server at once; here it gets no answer.
+    vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
+
     render(<App />);
 
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
       "Virtuoso Drive",
     );
     expect(document.querySelector("header img")).not.toBeNull();
-    expect(screen.getByRole("main").contains(statusLine())).toBe(true);
+    expect(
+      screen.getByRole("main").contains(screen.getByTestId("folder-screen")),
+    ).toBe(true);
+    expect(screen.getByTestId("file-list").dataset.state).toBe("loading");
+    expect(screen.queryByTestId("site-status-line")).toBeNull();
   });
 });

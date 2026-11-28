@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readFolder, ROOT } from "./files.ts";
+import { findStaleNameCharacters } from "./name-characters.ts";
 import { measurePage, PAGE_BUDGET_BYTES } from "./page-size.ts";
 import {
   findCommittedDependencies,
@@ -9,6 +10,7 @@ import {
   findGoogleLibraries,
   findMissingLockFiles,
   findPlainJavaScript,
+  findSampleStepProblems,
   findUnpinned,
 } from "./repository-rules.ts";
 import type { Finding, RepositoryFile } from "./repository-rules.ts";
@@ -16,7 +18,8 @@ import type { Finding, RepositoryFile } from "./repository-rules.ts";
 /**
  * Runs the repository checks over every file Git tracks or would track:
  * no Firebase or Google library, no new plain JavaScript source, no committed
- * dependency folder, no email-shaped text, the page's size limit, pinning.
+ * dependency folder, no email-shaped text, the page's size limit, pinning,
+ * and that the files generated from a data file are up to date.
  *
  * Usage: node scripts/src/repository-checks.ts
  */
@@ -86,6 +89,13 @@ export function checkRepository(root: string = ROOT): RepositoryReport {
     ...findEmailAddresses(files),
     ...findUnpinned(files),
     ...findMissingLockFiles(paths, REQUIRED_LOCK_FILES),
+    ...findSampleStepProblems(files),
+    // The name rules' character lists: what is generated from the data file
+    // must be what is in the repository (security design S23).
+    ...findStaleNameCharacters((path) => {
+      const full = join(root, path);
+      return existsSync(full) ? readFileSync(full, "utf8") : undefined;
+    }),
   ];
 
   const builtPage = join(root, "dist", "web");

@@ -194,6 +194,59 @@ resource "aws_cloudwatch_query_definition" "refusals" {
   EOT
 }
 
+# Added with Unit U3 (observability design O24): how browsing is doing, read
+# from the server's request entries. No measurement series and no alarm is
+# added; a search is charged only by the log it reads, when a person runs it.
+
+resource "aws_cloudwatch_query_definition" "folder_outcomes" {
+  name            = "${var.prefix}/folder requests by outcome"
+  log_group_names = [var.log_group_names.server]
+  query_string    = <<-EOT
+    filter operation = "getFolder"
+    | stats count(*) as requests by folderOutcome
+    | sort folderOutcome asc
+  EOT
+}
+
+resource "aws_cloudwatch_query_definition" "slow_folders" {
+  name            = "${var.prefix}/folder requests slower than 1 second today"
+  log_group_names = [var.log_group_names.server]
+  query_string    = <<-EOT
+    fields @timestamp, folderId, rows, answerBytes, durationMs, requestId
+    | filter operation = "getFolder" and durationMs > 1000
+    | sort durationMs desc
+    | limit 50
+  EOT
+}
+
+locals {
+  # Views drawn from the log by a search, not from a measurement series. The
+  # search runs when a person opens or refreshes the dashboard: a dashboard's
+  # definition has no setting that makes it refresh by itself, and none is
+  # added.
+  log_views = [
+    {
+      type = "log", x = 0, y = 18, width = 24, height = 6
+      properties = {
+        title  = "Folder requests by outcome over time"
+        region = local.region
+        # Shown as a table: one line for each outcome in each five minutes.
+        # The search is of the plainest form the service
+        # documents (a count grouped by a field and by a period of time), and
+        # a table shows the result of any search. Whether the service would
+        # also draw this search as one line per outcome has not been seen, so
+        # that is not relied on.
+        view  = "table"
+        query = <<-EOT
+          SOURCE '${var.log_group_names.server}'
+          | filter operation = "getFolder"
+          | stats count(*) by folderOutcome, bin(5m)
+        EOT
+      }
+    },
+  ]
+}
+
 # --- The one screen ---
 
 resource "aws_cloudwatch_dashboard" "this" {
@@ -303,8 +356,22 @@ resource "aws_cloudwatch_dashboard" "this" {
           }
         },
       ] : [],
+      local.log_views,
     )
   })
+}
+
+output "folder_search_names" {
+  description = "The saved searches added for browsing (Unit U3)."
+  value = [
+    aws_cloudwatch_query_definition.folder_outcomes.name,
+    aws_cloudwatch_query_definition.slow_folders.name,
+  ]
+}
+
+output "log_view_titles" {
+  description = "The dashboard's views that are drawn from the log by a search."
+  value       = [for view in local.log_views : view.properties.title]
 }
 
 output "alarm_names" {
@@ -324,5 +391,9 @@ output "names" {
     aws_cloudwatch_metric_alarm.health[*].alarm_name,
     aws_cloudwatch_metric_alarm.error_rate[*].alarm_name,
     [for tags in aws_route53_health_check.site[*].tags : tags.Name],
+    [
+      aws_cloudwatch_query_definition.folder_outcomes.name,
+      aws_cloudwatch_query_definition.slow_folders.name,
+    ],
   )
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Database } from "../db/database.ts";
+import { pathParameterNames } from "../http/operation.ts";
 import { allOperations, contractOperations } from "./index.ts";
 import type { OperationSettings } from "./index.ts";
 
@@ -26,7 +27,9 @@ function settings(
 }
 
 describe("the declared list of operations", () => {
-  it("holds the health check and site information, and nothing else", () => {
+  // U3 added the folder read to this list; the three tests that spell the
+  // list out were brought up to date with it, and assert as strictly as before.
+  it("holds the health check, site information and the folder read, and nothing else", () => {
     expect(
       contractOperations(settings()).map((operation) => [
         operation.name,
@@ -36,7 +39,21 @@ describe("the declared list of operations", () => {
     ).toEqual([
       ["getHealth", "GET", "/v1/health"],
       ["getSiteInformation", "GET", "/v1/site-information"],
+      ["getFolder", "GET", "/v1/folders/{folderId}"],
     ]);
+  });
+
+  it("adds exactly one operation in U3, which only reads; no route reaches the name operations or the change step", () => {
+    const added = allOperations(settings({ forcedFailure: true })).filter(
+      (operation) =>
+        !["getHealth", "getSiteInformation", "forceFailure"].includes(
+          operation.name,
+        ),
+    );
+
+    expect(
+      added.map((operation) => [operation.name, operation.method]),
+    ).toEqual([["getFolder", "GET"]]);
   });
 
   it("contains only GET, in every configuration", () => {
@@ -63,7 +80,18 @@ describe("the declared list of operations", () => {
       operations.length,
     );
     for (const operation of operations) {
-      expect(operation.path).toMatch(/^\/v1\/[a-z]+(-[a-z]+)*$/);
+      // Fixed parts in kebab-case; a named part, in braces, in camelCase.
+      expect(operation.path).toMatch(
+        /^\/v1\/[a-z]+(-[a-z]+)*(\/(\{[a-z][A-Za-z0-9]*\}|[a-z]+(-[a-z]+)*))*$/,
+      );
+    }
+  });
+
+  it("declares a check for the values of every path that has named parts, and for no other", () => {
+    for (const operation of allOperations(settings({ forcedFailure: true }))) {
+      expect(operation.params !== undefined).toBe(
+        pathParameterNames(operation.path).length > 0,
+      );
     }
   });
 
@@ -91,6 +119,7 @@ describe("the declared list of operations", () => {
     expect(operations.map((operation) => operation.name)).toEqual([
       "getHealth",
       "getSiteInformation",
+      "getFolder",
     ]);
   });
 });

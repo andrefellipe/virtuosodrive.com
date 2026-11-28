@@ -252,8 +252,12 @@ whole time.
    connection may take 2 of the 3 seconds it gives the database in a
    request, so its own first call to the copy may fail. It did on
    2026-11-27: the first health check answered 503 after 2.3 seconds, and
-   the deployment's smoke check, which tries five times, passed at its
-   second attempt. For those seconds the site answers with an error.
+   the deployment's smoke check after the infrastructure change, which
+   tries five times, passed at its second attempt. A person's call in those
+   seconds would probably have failed: the page does not try again after
+   the answer site information gives when the database fails. That is
+   inferred from the code and the log; it was not tried in a browser, and
+   how long the window lasted is not known.
 
 **Confirm.**
 
@@ -503,8 +507,11 @@ Done once, in the test environment, and recorded in
    `infra/environment/test.tfvars`. Merge it.
 2. **Error rate.** Holding the test access password as the `vd_access` cookie,
    ask for `https://test.virtuoso.andrefellipelabs.com/v1/forced-failure` at
-   least 20 times within 5 minutes. Each answers 500. The email arrives within
-   about 10 minutes; a second arrives when the rate clears.
+   least 20 times within 5 minutes. Each answers 500. The alarm is raised
+   within a few minutes of the last failing request, and the email follows;
+   a second arrives when the rate clears. (On 2026-11-27 the alarm was
+   raised one to two minutes after the last failing request. When the
+   emails arrived was not written down.)
 3. **Health.** Stop the test database for a few minutes (RDS, `vd-test-db`,
    "Stop temporarily"), wait for the email, start it again, wait for the
    second email.
@@ -583,6 +590,21 @@ log expiry after 30 days and the removal of Releases older than the ten most
 recent are automatic. The workflow `compare` runs weekly for test and reports
 anything in AWS that differs from the repository; for production, start it by
 hand.
+
+**Sample content in the test environment.** Every deployment to test loads
+prepared folders and files into "All", so that the end-to-end tests and a
+person looking at the test site have something to browse: the sample
+loader. It is the change runner started a second time by the pipeline, after
+the database changes and before the new server and page are put in place.
+There is nothing to do by hand. It makes nothing twice: an entry already
+there is found again and left as it is, so it can run at any time. It never
+runs in production, by the pipeline's own condition and by its own refusal;
+production's "All" stays empty until the migration. If it fails, the
+deployment stops as "not put in place" and the test site keeps running what
+it ran; the run's log shows the loader's summary, with the key of the sample
+entry it stopped at and the kind of failure (never a file's or folder's
+name). The sample entries are in `db-migrate/src/samples/sample-set.json`.
+The sample files have no contents until downloading is built.
 
 ## After the first month
 

@@ -3,9 +3,9 @@ info:
   title: Virtuoso Drive API
   version: 1.0.0
   description: >
-    The operations of the thin slice (Unit U1), following the conventions of
-    contract C1. A test checks this file against the server's declared list of
-    operations.
+    The operations of the thin slice (Unit U1) and of browsing (Unit U3,
+    contract C3), following the conventions of contract C1. A test checks
+    this file against the server's declared list of operations.
 servers:
   - url: https://virtuoso.andrefellipelabs.com/v1
 paths:
@@ -59,6 +59,82 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /folders/{folderId}:
+    get:
+      operationId: getFolder
+      summary: A folder, its path from the top, and its visible contents
+      description: >
+        Use the identifier root for the top folder, "All". Send the version
+        last received in If-None-Match; the answer is 304 with no body when
+        nothing in the folder has changed. Anyone may ask: no session is
+        needed. A folder that is unknown, deleted or inside a deleted folder,
+        and an identifier that is not of the generated form, all get the same
+        404. No answer may be stored.
+      security: []
+      parameters:
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The identifier root, or a folder's generated identifier
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+          description: The version last received for this folder
+        - name: Accept-Encoding
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The answer is compressed only if this names gzip
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: The folder
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: The folder's version; opaque to the caller
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+            Content-Encoding:
+              schema:
+                type: string
+                enum: [gzip]
+              description: Present when the answer is compressed
+            Server-Timing:
+              schema:
+                type: string
+              description: The time the server took to build the answer
+            X-Request-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderView"
+        "304":
+          description: Unchanged since the version sent; no body
+          headers:
+            ETag:
+              schema:
+                type: string
+            X-Request-Id:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
 components:
   parameters:
     RequestId:
@@ -97,6 +173,51 @@ components:
         environment:
           type: string
           enum: [test, production]
+    FolderView:
+      type: object
+      required: [folderId, name, path, items]
+      properties:
+        folderId:
+          type: string
+          description: The folder's own identifier, also when root was asked for
+        name:
+          type: string
+        path:
+          type: array
+          description: From "All" to this folder, in order, both included
+          items:
+            type: object
+            required: [folderId, name]
+            properties:
+              folderId:
+                type: string
+              name:
+                type: string
+        items:
+          type: array
+          description: Visible items only, lowest position first
+          items:
+            $ref: "#/components/schemas/Item"
+    Item:
+      type: object
+      required: [itemId, kind, name]
+      properties:
+        itemId:
+          type: string
+        kind:
+          type: string
+          enum: [folder, file]
+        name:
+          type: string
+          description: Plain text; never markup to be interpreted
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Files only; whole bytes
+        contentType:
+          type: string
+          description: Files only, when one was recorded; chooses the icon
     Problem:
       type: object
       required: [type, title, status, code]

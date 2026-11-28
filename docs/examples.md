@@ -14,6 +14,81 @@ copy: the old code shows what the application does, not how new code looks.
 | An end-to-end test                   | `e2e/tests/thin-slice.spec.ts`                                                                                                         | It is the test                                                                       |
 | AWS resources                        | A module under `infra/modules/`, for example `infra/modules/monitoring/main.tf`, used from `infra/environment/main.tf`                 | `infra/environment/tests/naming.tftest.hcl`, and the Checkov run in the pull request |
 
+## What Unit U3 adds: the patterns U4 to U8 copy
+
+U3 is the first Unit with a product feature. Its three patterns sit on top of
+U1's examples; where the two differ, the later Units follow U3's.
+
+| To add                                                         | Copy                                                                                                                                 | And its test                                                                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| An operation with a value in its path, headers or its own log  | The folder operation, `server/src/operations/folder.ts`                                                                              | `server/src/operations/folder.integration.test.ts` (through the server), `folder.test.ts` (when the database fails) |
+| Anything that reads folders or files                           | `server/src/drive/folder-reading.ts` and `file-reading.ts`; never a statement of your own on `items`                                 | `server/src/drive/folder-reading.integration.test.ts`                                                               |
+| Anything that changes a folder's list                          | The change step, `server/src/drive/change-step.ts`, called as `db-migrate/src/samples/loader.ts` calls it                            | `server/src/drive/change-step.integration.test.ts`                                                                  |
+| A name a person typed                                          | `server/src/drive/names.ts` to normalise and validate; `checkName` and `lowestFreeName` in the change step to ask whether it is free | `server/src/drive/names.test.ts`, and the shared table `server/src/drive/testing/name-cases.ts`                     |
+| Logic of the page that decides something                       | The selection function, `web/src/folder/selection.ts`: a pure function, with no part of it in a component                            | `web/src/folder/selection.test.ts`, one case per row of the design's table                                          |
+| A screen of the page                                           | `web/src/folder/FolderScreen.tsx`, with its parts beside it                                                                          | `web/src/folder/FolderScreen.test.tsx`                                                                              |
+| A rule the database holds                                      | `db-migrate/migrations/0002_items.sql`: a named constraint, no trigger                                                               | `db-migrate/src/items-table.integration.test.ts`, one direct write per rule                                         |
+| An end-to-end test of a journey                                | `e2e/tests/browsing.spec.ts`, with the shared `e2e/tests/folders.ts`                                                                 | It is the test                                                                                                      |
+| A check of the deployed test environment that blocks a Release | A gate in `scripts/src/gates.ts`, run from `deliver`                                                                                 | `scripts/src/browsing-checks.test.ts`, against a stand-in environment                                               |
+
+**The folder operation** shows what U3 added to an operation's declaration:
+
+- A path may hold a named part in braces, as in `/v1/folders/{folderId}`.
+  The operation declares the shape of the path's values (`params`); the
+  request steps check them before the operation runs. An operation whose
+  answer must not teach what its identifiers look like declares that a
+  failed check is "not found" (`invalidParams`); otherwise it is
+  `invalidInput`, as for every other input.
+- It names the request headers it reads (`headers`) and is handed no other.
+- It may name response headers, answer with no body, and hand back JSON it
+  has already written out and perhaps compressed (`server/src/http/body.ts`
+  decides when compressing is worth it).
+- It declares the fields it adds to its log entry, with their types
+  (`logFields`), and adds them with `log(...)` or with its answer. A field
+  that was not declared is dropped. No name of a file or folder, and nothing
+  a caller sent that failed its check, is ever logged.
+- A failure it states on purpose is answered as `{ problem: "notFound" }`,
+  made by one function that takes no argument, so that nothing can vary the
+  answer. A database error's own message is never passed on to the log: it
+  can quote a name (`server/src/drive/store-errors.ts`).
+- A known way to fail has a name in the log's `fault` field
+  (`server/src/log/fault.ts`).
+
+**The change step** is the one way to change a folder's list, and it is
+binding on U6, U7 and U8:
+
+- One transaction: lock the folder's row, check it is still visible, check
+  the name or take the lowest free one, take the next position, write, raise
+  the folder's version. A later Unit adds its change as another function in
+  `change-step.ts`, with the same steps in the same order; none compares
+  names, takes a position or raises a version anywhere else.
+- Whether two names are the same is decided by the database alone. The code
+  passes the text as a parameter and the database folds it; no code folds
+  case.
+- A refusal is an answer (`notFound`, a name code, `nameAlreadyUsed`) for
+  the caller to turn into its own. `FolderBusyError` and `StoreRefusedError`
+  are faults, reported as `serverError`.
+- A later Unit that must lock two folders takes them in the order of their
+  identifiers.
+- In U3 the server's database user can only read `items`, and no operation
+  reaches the change step. The Unit that adds the first change route gives
+  that user the right to write, together with the check of who is asking.
+
+**The selection function** shows how the page keeps logic out of components:
+
+- `select(rows, selection, input)` answers the new selection and, sometimes,
+  an effect for the screen to carry out. The components turn clicks, keys
+  and taps into inputs and show the result; they decide nothing.
+- Selection, anchor and focus are held by item identifier, never by place.
+- The screen's state is one value; the list is in exactly one of its five
+  states; each opening of a folder carries a number, and an answer for an
+  earlier number is dropped.
+
+**The character lists of the name rules** come from one data file,
+`server/src/drive/name-characters.json`. Run
+`node scripts/src/name-characters.ts` after changing it; the repository
+checks fail when what is generated from it is out of date.
+
 ## The rules each example shows
 
 **An operation**

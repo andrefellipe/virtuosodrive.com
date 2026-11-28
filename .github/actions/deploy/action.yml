@@ -1,8 +1,8 @@
 name: Deploy a Release to one environment
 description: >
   Puts one built Release in place in one environment, in the order the
-  reliability design fixes (R3): infrastructure, database, server, page; then
-  the smoke check. Records the Deployment with its outcome. The caller has
+  reliability design fixes (R3, R24): infrastructure, database, sample
+  content (test only), server, page; then the smoke check. Records the Deployment with its outcome. The caller has
   already obtained the environment's AWS identity and downloaded the Release
   into dist/.
 
@@ -134,6 +134,8 @@ runs:
           --s3-bucket "${RELEASES_BUCKET}" --s3-key "db-migrate/${VERSION}.zip" --publish \
           --query Version --output text)"
         aws lambda wait published-version-active --function-name "${MIGRATE_FUNCTION}" --qualifier "${RUNNER_VERSION}"
+        # The next step calls this same published version a second time.
+        echo "runner-version=${RUNNER_VERSION}" >> "${GITHUB_OUTPUT}"
         aws lambda invoke --function-name "${MIGRATE_FUNCTION}" --qualifier "${RUNNER_VERSION}" \
           --cli-read-timeout 330 --cli-connect-timeout 10 \
           --query FunctionError --output text migrate-answer.json > migrate-error.txt
@@ -142,6 +144,33 @@ runs:
         echo
         if [ "$(cat migrate-error.txt)" != "None" ]; then
           echo "::error::The database changes failed. The new version was not put in place."
+          exit 1
+        fi
+
+    - name: Sample content
+      # Test environment only (security design S31). The same published
+      # version of the change runner is called a second time, with the
+      # instruction to load samples; the runner itself also refuses that
+      # instruction in production. If loading fails, the deployment stops
+      # here: the server and the page running are still the previous ones.
+      # A repository check fails if this step loses its condition.
+      if: inputs.environment == 'test'
+      id: samples
+      shell: bash
+      env:
+        RUNNER_VERSION: ${{ steps.database.outputs.runner-version }}
+        # Called once and waited for, as the database changes are.
+        AWS_MAX_ATTEMPTS: "1"
+      run: |
+        aws lambda invoke --function-name "${MIGRATE_FUNCTION}" --qualifier "${RUNNER_VERSION}" \
+          --cli-binary-format raw-in-base64-out --payload '{"mode":"load-samples"}' \
+          --cli-read-timeout 330 --cli-connect-timeout 10 \
+          --query FunctionError --output text samples-answer.json > samples-error.txt
+        echo "The sample loader answered:"
+        cat samples-answer.json
+        echo
+        if [ "$(cat samples-error.txt)" != "None" ]; then
+          echo "::error::Loading the sample content failed. The new version was not put in place."
           exit 1
         fi
 
@@ -186,6 +215,10 @@ runs:
       env:
         VD_ENVIRONMENT: ${{ inputs.environment }}
         VD_EXPECTED_VERSION: ${{ inputs.version }}
+        # This Release has browsing, so the check also asks for the top
+        # folder. The smoke check after the infrastructure change, above,
+        # must not say so: what runs then may be a Release without it.
+        VD_HAS_BROWSING: "yes"
       run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts smoke
 
     - name: Record the Deployment and its outcome

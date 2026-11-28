@@ -1,0 +1,292 @@
+{
+  "description": "Prepared sample content for the test environment (design W6). Loaded by the change runner in its load-samples mode, never in production. Each entry is found again by its source key: 'sample:' and the keys from the top down to the entry, joined by '/'. Keys never change; names may hold anything the name rules allow. In a name, {n} is the number of a repeated or chained entry, and {U+0301} stands for the character with that code point, so that nothing invisible sits in this file. No entry has contents until U4.",
+  "entries": [
+    {
+      "key": "periodo-1",
+      "kind": "folder",
+      "name": "1º Período",
+      "children": [
+        {
+          "key": "calculo-1",
+          "kind": "folder",
+          "name": "Cálculo I",
+          "children": [
+            {
+              "key": "2019-1",
+              "kind": "folder",
+              "name": "2019.1",
+              "children": [
+                {
+                  "key": "provas",
+                  "kind": "folder",
+                  "name": "Provas",
+                  "children": [
+                    {
+                      "key": "p1",
+                      "kind": "file",
+                      "name": "P1.pdf",
+                      "size": 482133,
+                      "contentType": "application/pdf"
+                    },
+                    {
+                      "key": "p1-gabarito",
+                      "kind": "file",
+                      "name": "P1 - gabarito.pdf",
+                      "size": 91277,
+                      "contentType": "application/pdf"
+                    }
+                  ]
+                },
+                {
+                  "key": "lista-1",
+                  "kind": "file",
+                  "name": "Lista 1.pdf",
+                  "size": 204800,
+                  "contentType": "application/pdf"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "fisica-1",
+          "kind": "folder",
+          "name": "Física I",
+          "children": []
+        }
+      ]
+    },
+    {
+      "key": "twenty",
+      "kind": "folder",
+      "name": "Twenty items",
+      "children": [
+        {
+          "key": "exercise",
+          "kind": "file",
+          "name": "Exercise {n}.pdf",
+          "repeat": 20,
+          "size": 15360,
+          "contentType": "application/pdf"
+        }
+      ]
+    },
+    {
+      "key": "five-hundred",
+      "kind": "folder",
+      "name": "Five hundred items",
+      "children": [
+        {
+          "key": "notes",
+          "kind": "file",
+          "name": "Lecture notes {n}.pdf",
+          "repeat": 500,
+          "size": 262144,
+          "contentType": "application/pdf"
+        }
+      ]
+    },
+    {
+      "key": "empty",
+      "kind": "folder",
+      "name": "Empty folder",
+      "children": []
+    },
+    {
+      "key": "kinds",
+      "kind": "folder",
+      "name": "One of each kind",
+      "children": [
+        {
+          "key": "folder",
+          "kind": "folder",
+          "name": "A folder",
+          "children": []
+        },
+        {
+          "key": "text",
+          "kind": "file",
+          "name": "notes.txt",
+          "size": 512,
+          "contentType": "text/plain"
+        },
+        {
+          "key": "image",
+          "kind": "file",
+          "name": "photo.jpg",
+          "size": 1048576,
+          "contentType": "image/jpeg"
+        },
+        {
+          "key": "pdf",
+          "kind": "file",
+          "name": "handout.pdf",
+          "size": 1536,
+          "contentType": "application/pdf"
+        },
+        {
+          "key": "audio",
+          "kind": "file",
+          "name": "lecture.mp3",
+          "size": 5767168,
+          "contentType": "audio/mpeg"
+        },
+        {
+          "key": "video",
+          "kind": "file",
+          "name": "lecture.mp4",
+          "size": 1610612736,
+          "contentType": "video/mp4"
+        },
+        {
+          "key": "word",
+          "kind": "file",
+          "name": "report.docx",
+          "size": 20480,
+          "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        },
+        {
+          "key": "excel",
+          "kind": "file",
+          "name": "grades.xlsx",
+          "size": 1023,
+          "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        },
+        {
+          "key": "powerpoint",
+          "kind": "file",
+          "name": "slides.pptx",
+          "size": 1024,
+          "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        },
+        {
+          "key": "zip",
+          "kind": "file",
+          "name": "archive.zip",
+          "size": 3145728,
+          "contentType": "application/zip"
+        },
+        {
+          "key": "unknown",
+          "kind": "file",
+          "name": "unknown.bin",
+          "size": 4096,
+          "contentType": "application/octet-stream"
+        },
+        {
+          "key": "no-type",
+          "kind": "file",
+          "name": "no type recorded",
+          "size": 77
+        },
+        {
+          "key": "zero-bytes",
+          "kind": "file",
+          "name": "empty.txt",
+          "size": 0,
+          "contentType": "text/plain"
+        }
+      ]
+    },
+    {
+      "key": "names",
+      "kind": "folder",
+      "name": "Names",
+      "children": [
+        {
+          "key": "markup-bold",
+          "kind": "file",
+          "name": "<b>x<b>",
+          "size": 10,
+          "contentType": "text/plain"
+        },
+        {
+          "key": "markup-script",
+          "kind": "file",
+          "name": "<script>alert(1)<script>",
+          "size": 10,
+          "contentType": "text/plain"
+        },
+        {
+          "key": "markup-image",
+          "kind": "folder",
+          "name": "<img src=x onerror=alert(1)>",
+          "children": []
+        },
+        {
+          "key": "accent-as-two-characters",
+          "kind": "file",
+          "name": "Resume{U+0301}.txt",
+          "size": 2048,
+          "contentType": "text/plain"
+        },
+        {
+          "key": "longest-name",
+          "kind": "file",
+          "name": "A name of exactly 255 characters.pdf",
+          "padNameTo": 255,
+          "size": 4096,
+          "contentType": "application/pdf"
+        }
+      ]
+    },
+    {
+      "key": "deleted-things",
+      "kind": "folder",
+      "name": "Deleted things",
+      "children": [
+        {
+          "key": "still-here",
+          "kind": "file",
+          "name": "Still here.txt",
+          "size": 100,
+          "contentType": "text/plain"
+        },
+        {
+          "key": "deleted-file",
+          "kind": "file",
+          "name": "Deleted file.txt",
+          "deleted": true,
+          "size": 100,
+          "contentType": "text/plain"
+        },
+        {
+          "key": "deleted-folder",
+          "kind": "folder",
+          "name": "Deleted folder",
+          "deleted": true,
+          "children": [
+            {
+              "key": "unmarked-file",
+              "kind": "file",
+              "name": "Inside a deleted folder.txt",
+              "size": 100,
+              "contentType": "text/plain"
+            },
+            {
+              "key": "unmarked-folder",
+              "kind": "folder",
+              "name": "Folder inside a deleted folder",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "level",
+      "kind": "folder",
+      "name": "Level {n} of twelve",
+      "chain": 12,
+      "children": [
+        {
+          "key": "bottom",
+          "kind": "file",
+          "name": "At the bottom.txt",
+          "size": 1,
+          "contentType": "text/plain"
+        }
+      ]
+    }
+  ]
+}

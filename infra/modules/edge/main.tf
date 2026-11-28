@@ -265,10 +265,16 @@ data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
 }
 
-# To the server: query strings forwarded, cookies not forwarded.
+# To the server: query strings forwarded, cookies not forwarded, and exactly
+# these five request headers. The last two were added with Unit U3: without
+# If-None-Match the server never sees the version a page holds and can never
+# answer "unchanged"; without Accept-Encoding it never learns that it may
+# compress. Neither carries a credential. Nothing is kept at the edge for
+# /v1, so listing them changes what the server is told and nothing else. A
+# test asserts the list, so that a later edit cannot drop one unnoticed.
 resource "aws_cloudfront_origin_request_policy" "server" {
   name    = "${var.prefix}-server"
-  comment = "Query strings and the request identifier; no cookies"
+  comment = "Query strings, the request identifier, the version held and the encodings accepted; no cookies"
 
   cookies_config {
     cookie_behavior = "none"
@@ -276,7 +282,7 @@ resource "aws_cloudfront_origin_request_policy" "server" {
   headers_config {
     header_behavior = "whitelist"
     headers {
-      items = ["X-Request-Id", "Accept", "Content-Type"]
+      items = ["X-Request-Id", "Accept", "Content-Type", "If-None-Match", "Accept-Encoding"]
     }
   }
   query_strings_config {
@@ -460,6 +466,16 @@ output "certificate_validation_records" {
     type  = option.resource_record_type
     value = option.resource_record_value
   }]
+}
+
+output "server_request_headers" {
+  description = "The request headers the edge passes to the server, for the test that they are exactly the five intended."
+  value       = one(one(aws_cloudfront_origin_request_policy.server.headers_config).headers).items
+}
+
+output "server_request_cookies" {
+  description = "Whether the edge passes cookies to the server: none."
+  value       = one(aws_cloudfront_origin_request_policy.server.cookies_config).cookie_behavior
 }
 
 output "names" {

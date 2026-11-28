@@ -217,3 +217,91 @@ export function findMissingLockFiles(
       detail: "the lock file is missing",
     }));
 }
+
+// --- The sample content step of a deployment ------------------------------
+
+/** The shared deploy action, whose steps every deployment runs. */
+export const DEPLOY_ACTION_FILE = ".github/actions/deploy/action.yml";
+
+const SAMPLE_STEP = "Sample content";
+const SAMPLE_CONDITION = "inputs.environment == 'test'";
+const LOAD_SAMPLES_INSTRUCTION = "load-samples";
+
+interface ActionStep {
+  name: string;
+  text: string;
+}
+
+/** The steps of a composite action, read by the indentation the file is written in. */
+function actionSteps(text: string): ActionStep[] {
+  const steps: ActionStep[] = [];
+  for (const line of text.split("\n")) {
+    const start = /^ {4}- name:\s*(.+?)\s*$/.exec(line);
+    if (start?.[1] !== undefined) {
+      steps.push({ name: start[1].replace(/^["']|["']$/g, ""), text: "" });
+    }
+    const current = steps.at(-1);
+    if (current !== undefined) {
+      current.text += `${line}\n`;
+    }
+  }
+  return steps;
+}
+
+/**
+ * Sample content must never be loaded in production (security design S31).
+ * It is fenced twice: the loader refuses production itself, and the deploy
+ * action's step runs only when the environment is `test`. This checks the
+ * second fence: the step exists, has exactly that condition, sits between
+ * the database changes and the switch, and is the only step that gives the
+ * instruction to load samples.
+ */
+export function findSampleStepProblems(
+  files: readonly RepositoryFile[],
+): Finding[] {
+  const problem = (detail: string): Finding[] => [
+    { rule: "sample-content-step", path: DEPLOY_ACTION_FILE, detail },
+  ];
+  const file = files.find((candidate) => candidate.path === DEPLOY_ACTION_FILE);
+  if (file === undefined) {
+    return problem("the deploy action is missing");
+  }
+  const steps = actionSteps(file.content);
+  const at = steps.findIndex((step) => step.name === SAMPLE_STEP);
+  const step = steps[at];
+  if (step === undefined) {
+    return problem(`there is no step named "${SAMPLE_STEP}"`);
+  }
+  const conditions = [...step.text.matchAll(/^ {6}if:\s*(.+?)\s*$/gm)].map(
+    (found) => found[1],
+  );
+  if (conditions.length !== 1 || conditions[0] !== SAMPLE_CONDITION) {
+    return problem(
+      `the step "${SAMPLE_STEP}" must run only when the environment is test: its condition must be exactly "if: ${SAMPLE_CONDITION}"`,
+    );
+  }
+  if (!step.text.includes(LOAD_SAMPLES_INSTRUCTION)) {
+    return problem(
+      `the step "${SAMPLE_STEP}" does not give the instruction "${LOAD_SAMPLES_INSTRUCTION}"`,
+    );
+  }
+  const database = steps.findIndex(
+    (other) => other.name === "Database changes",
+  );
+  const theSwitch = steps.findIndex((other) => other.name.startsWith("Switch"));
+  if (database === -1 || theSwitch === -1 || at < database || at > theSwitch) {
+    return problem(
+      `the step "${SAMPLE_STEP}" must come after the database changes and before the switch`,
+    );
+  }
+  const others = steps.filter(
+    (other, index) =>
+      index !== at && other.text.includes(LOAD_SAMPLES_INSTRUCTION),
+  );
+  if (others.length > 0) {
+    return problem(
+      `only the step "${SAMPLE_STEP}" may give the instruction "${LOAD_SAMPLES_INSTRUCTION}"; "${others[0]?.name}" gives it too`,
+    );
+  }
+  return [];
+}

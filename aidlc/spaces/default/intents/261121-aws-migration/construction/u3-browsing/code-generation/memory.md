@@ -1,0 +1,41 @@
+<!-- INVARIANT: examples are single-line HTML comments so a fresh template parses to total=0 (MEMORY_EMPTY). Do NOT un-comment or split across lines. t100 guards this. -->
+> This file is kept up to date automatically while the stage runs.
+
+## Interpretations
+<!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
+- 2026-11-28T01:47:18Z — The character lists were taken from Unicode 18.0 as Node.js 24 carries it (White_Space, and General_Category Cf); PostgreSQL 18.1's own tables are Unicode 16.0. The checks list the characters, so the difference changes nothing they refuse.
+- 2026-11-28T01:47:18Z — `content_id` and the two account columns are `uuid`: decision T25 makes identifiers random 128-bit ones, and neither stored contents (U4) nor accounts (U2) is designed yet. Their Units must confirm or raise it before the table has rows that matter.
+- 2026-11-28T01:47:18Z — The log's field for the time taken is `durationMs`, as U1 named it; the designs call it `duration`. The saved searches read `durationMs`.
+- 2026-11-28T01:47:18Z — `versionSent` is "a version header was sent", whatever it held; `folderId` is logged for a well-formed identifier that was not found, and left out for `root` when the read fails before the top folder's identifier is known.
+- 2026-11-28T01:47:18Z — "Server-Timing" and "Vary" are sent only with a full answer (200), so that the four not-found answers stay equal byte for byte.
+- 2026-11-28T01:47:18Z — The page's title is the folder's name alone ("All"), as the design says twice; the entry document's own title stays "Virtuoso Drive".
+- 2026-11-28T01:47:18Z — A deleted sample folder is created with everything it holds in one change step (`contents`), then marked: nothing can be added to a folder once it is hidden, and R25 asks for "created and marked deleted in that same transaction".
+- 2026-11-28T01:47:18Z — Sample entries are found by keys that are slugs, never names ("sample:names/markup-bold"), so that the loader's summary can name the failing entry without logging a name (NFR5.20).
+- 2026-11-28T01:47:18Z — Tests: about 530 were written where the plan estimated 230, because the name cases, the listed icons and the refused identifiers are tables run row by row.
+
+## Deviations
+<!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
+- 2026-11-28T01:47:18Z — `name_key` is given the collation "pg_c_utf8" as well as being derived with it. With the database's default collation the unique index took about 12 ms for each 255-character name of four-byte characters (4,000 rows: 100 seconds; now 0.07). Not in the design; it follows its rule of naming what is needed and leaning on no default.
+- 2026-11-28T01:47:18Z — The table holds two rules the plan did not list: an item is not its own parent, and the item without a parent is a folder named "All" that is never deleted (entities: "cannot be deleted, renamed or moved").
+- 2026-11-28T01:47:18Z — The focus ring is #0454a0 for every control (7.55:1 on white). U1's #f5a623 is 2.03:1 on white and fails the 3:1 that NFR6.23 asks for; U1's button ring changed with it.
+- 2026-11-28T01:47:18Z — The second half of the compatibility check runs only the earlier Release's end-to-end tests of the server's operations and the access gate (three of U1's eight). Its tests of what its own page shows cannot pass against an environment that serves the new page, and are not run.
+- 2026-11-28T01:47:18Z — End-to-end "hidden items": the address of the DELETED sample folder cannot be opened, because nothing the site answers reveals its identifier. The test opens an identifier that belongs to nothing; that the two answers are identical is proved at the server.
+- 2026-11-28T01:47:18Z — U1's tests changed, each named in the code summary: three in `server/src/operations/index.test.ts` (the list of operations), one in `web/src/status/SiteStatus.test.tsx` (the App), six in `e2e/tests/thin-slice.spec.ts` (the page no longer shows the status view; two more were only given a tag). The not-found Problem's `detail` text was reworded.
+- 2026-11-28T01:47:18Z — Step 17, fifth correction: `docs/records/restore.md` already carried the removal's result and no sentence said it was owed, so nothing was changed for it.
+- 2026-11-28T01:47:18Z — Twice a file was written through the shell instead of the file tools: one edit of `scripts/src/name-characters.ts` early on, and the copy of the sixteen icons with `cp` (a copy is what Step 13 names). A stray `.vitest/` report from one of my commands was removed.
+
+## Tradeoffs
+<!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
+- 2026-11-28T01:47:18Z — The list is a native table given the role "grid", with every part's role written out: rows that expose "selected" belong to a grid, and below 768 pixels the rows are laid out as blocks, which makes some browsers forget a table's parts. A one-off scan inside jsdom found no violation; the real scan is the pipeline's.
+- 2026-11-28T01:47:18Z — The folder's answer is one row holding two JSON values (the walk's levels, the items), not many rows: one statement, one moment, and the list already in order from the index.
+- 2026-11-28T01:47:18Z — The two statements repeat the walk word for word instead of sharing a piece of text, because the linter refuses SQL assembled from pieces; a test compares the two.
+- 2026-11-28T01:47:18Z — A tap is told from a click by when a finger last touched the list (800 ms), not by the click's own pointer type alone: whether every engine reports a tap's press as a touch could not be tried here.
+- 2026-11-28T01:47:18Z — The generator writes the database's checks into the change file between two marker lines, because the file tool turned some of the escape sequences into the characters themselves.
+
+## Open questions
+<!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->
+- 2026-11-28T01:47:18Z — Nothing was run in a browser: no browser for the end-to-end tests is installed on this machine, and installing one is not in the plan. The 19 end-to-end tests, the four gates against a real environment, the deploy action's new step and the new step of `deliver` are written and not run.
+- 2026-11-28T01:47:18Z — Whether the dashboard's log view draws four lines from one search with four sums is from the service's documented behaviour, not seen.
+- 2026-11-28T01:47:18Z — The page half of the compatibility check is still missing. Smallest alternative: the earlier Release's entry document is kept in the test environment at `/r/<version>/index.html`; its page tests could be run against that, if they opened the page through one helper that takes the entry document's address. Needs the maintainer's decision.
+- 2026-11-28T02:20:00Z — Decided by the maintainer after the second review (READY), all five as recommended by the conductor: (1) `uuid` for `content_id` and the two account columns is accepted, and binds U4 and U2; (2) "sample loading fails" is not rehearsed and no switch is built: the pipeline path is the one U1 rehearsed, and the loader's own failure handling has integration tests; (3) the compatibility check stays at the server's operations and the access gate for now, and the page half is owed by U4, through one helper that opens the page; (4) the sample names stay as they are; (5) the could-not-load view gets the request identifier and the focus on "Try again" back in U5, which reworks that view. Also owed by U6, from the second review: a deadline error after `COMMIT` was sent leaves the outcome unknown and must not be answered as "nothing changed"; and the change step's "transaction abandoned" error needs a named outcome.
+- 2026-11-28T01:47:18Z — The rehearsal "sample loading fails" needs a failing sample entry to be merged, and the pull request's checks refuse one twice: the unit test of the sample set (an invalid name) and the integration test that loads the set into a real database (anything the database refuses). U1 met the same wall with database changes and built a switch. Which way to take here needs the maintainer's decision.

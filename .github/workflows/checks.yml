@@ -116,7 +116,7 @@ jobs:
             exit 1
           fi
           echo "Tested ${TESTED} of ${EXPECTED} Releases in reach."
-          echo "NOTE: the page's end-to-end tests of each version in reach are not yet run against this pull request's server; that half of the check needs a way to start the server locally, which does not exist yet."
+          echo "NOTE: the other half of this check runs after the merge, in deliver: the end-to-end tests of the Release running in production that exercise the server's operations and the access gate are run against the test environment. Its tests of what its own page shows are not run anywhere yet."
 
   infrastructure:
     runs-on: ubuntu-24.04

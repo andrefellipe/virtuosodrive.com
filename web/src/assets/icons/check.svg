@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The check mark at the start of a selected row. New with Unit U3 (design change 1), drawn for this project in the style of the set beside it: one black shape, no stroke. -->
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 58">
+<path d="M22.6,46.9L5.5,29.8l5.3-5.3l11.8,11.8l24.6-24.6l5.3,5.3L22.6,46.9z"/>
+</svg>

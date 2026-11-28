@@ -42,3 +42,39 @@ What was unexpected, and what was changed because of it.
   maintainer of an unwatched failure in test is GitHub's own email about the
   failed run; whether that email arrived on the day was not checked, and is
   owed.
+
+## A deployment whose sample loading fails (Unit U3)
+
+Rows added on 2026-11-27, with the code of Unit U3. Not yet performed: it
+needs Unit U3 deployed to the test environment first (reliability design
+R24; pipeline design of Unit U3, "Rehearsals and records owed").
+
+The rehearsal as designed: a merged change makes the loading of one sample
+entry fail; the step "Sample content" of the Deployment to test must then
+fail; the Deployment must end as `notPutInPlace`, before the switch; the
+test environment must still run the earlier version; a second pull request
+puts it right.
+
+How the failing entry gets merged is not settled, and is the maintainer's
+to decide before the rehearsal. A pull request that only makes an entry of
+`db-migrate/src/samples/sample-set.json` fail cannot pass its checks: the
+test of the sample set refuses a name the name rules refuse, and the test
+that loads the set into a real database refuses anything the database
+would. Unit U1 met the same wall with database changes and built a switch
+for its rehearsal (procedure 9 in `docs/operations.md`); Unit U3 built none.
+Write here which way was taken.
+
+| What                                                                 | Record |
+| -------------------------------------------------------------------- | ------ |
+| Date of the rehearsal                                                |        |
+| Pull request that made a sample entry invalid                        |        |
+| Link to the `deliver` run                                            |        |
+| Step the run failed at (expected: "Sample content")                  |        |
+| The loader's summary: the entry's key and the kind of failure        |        |
+| Outcome the run recorded (expected: `notPutInPlace`)                 |        |
+| Version the test environment ran before                              |        |
+| Version the test environment ran afterwards (expected: the same)     |        |
+| The database changes of the failed Deployment stayed applied         |        |
+| Sample entries created before the failing one stayed (expected: yes) |        |
+| Pull request that corrected the entry                                |        |
+| The next Deployment succeeded, and loaded the rest (yes/no)          |        |

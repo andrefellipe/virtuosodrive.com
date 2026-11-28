@@ -137,6 +137,77 @@ jobs:
           VD_ENVIRONMENT: test
         run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts measure
 
+      # The four gates of browsing (Unit U3). Each fails the run, and with it
+      # blocks production, as the end-to-end tests do. The first two are what
+      # proves that the edge passes the version and the accepted encodings in
+      # and the version and a compressed answer out: nothing short of a
+      # deployed environment can. They rest on the sample content.
+      - name: "Gate: a folder asked for again with its version answers unchanged, through the whole path"
+        env:
+          VD_ENVIRONMENT: test
+        run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts gate unchanged
+
+      - name: "Gate: the 500-item folder arrives compressed, through the whole path"
+        env:
+          VD_ENVIRONMENT: test
+        run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts gate compressed
+
+      # 100 requests at 5 a second, under the request limit of 10; about 20
+      # seconds. The figure is the server's own, from the Server-Timing header.
+      - name: "Gate: folder speed (95 of 100 within 500 milliseconds at the server)"
+        env:
+          VD_ENVIRONMENT: test
+        run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts gate speed
+
+      - name: "Gate: a folder's answer is not stored on the way"
+        env:
+          VD_ENVIRONMENT: test
+        run: VD_BASE_URL="${SITE_URL}" node scripts/src/cli.ts gate not-stored
+
+      - name: "Compatibility: the Release running in production, its end-to-end tests against this server"
+        # The second half of the compatibility check (reliability design R5).
+        # The first half is in the pull request's checks: the earlier
+        # Release's tests of its server against the new database changes.
+        #
+        # Here the Release running in production is checked out beside this
+        # one, and its own end-to-end tests are run against the test
+        # environment, which now runs the new server. Not all of them: the
+        # test environment serves the NEW page, so the earlier Release's
+        # tests of what its own page shows cannot pass and are not run. What
+        # is run are its tests of the server's operations and of the access
+        # gate (scripts/src/earlier-release-tests.ts says which, and why).
+        # A failure blocks the Release, as the gates above do.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VD_ENVIRONMENT: test
+          # The earlier Release's tests must not expect its own version here.
+          VD_EXPECTED_VERSION: ""
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=releases-production&per_page=100" > production-deployments.json
+          read -r RELEASE SHA _ <<< "$(node scripts/src/deployment-record.ts running < production-deployments.json) - - -"
+          if [ "${RELEASE}" = "-" ]; then
+            echo "No Release runs in production yet, so there is no earlier Release to check."
+            exit 0
+          fi
+          if [ "${SHA}" = "${GITHUB_SHA}" ]; then
+            echo "Production already runs this Release; there is no earlier one to check."
+            exit 0
+          fi
+          git worktree add --detach "../earlier-${RELEASE}" "${SHA}"
+          if [ ! -d "../earlier-${RELEASE}/e2e/tests" ]; then
+            echo "::error::Release ${RELEASE} does not have its end-to-end tests where this check expects them. The check proved nothing and fails."
+            exit 1
+          fi
+          PATTERN="$(node scripts/src/earlier-release-tests.ts "../earlier-${RELEASE}/e2e/tests")"
+          echo "Release ${RELEASE}: running its end-to-end tests that match: ${PATTERN}"
+          (
+            cd "../earlier-${RELEASE}"
+            npm ci
+            npx playwright install chromium firefox webkit
+            VD_BASE_URL="${SITE_URL}" npx playwright test --config e2e/playwright.config.ts --grep "${PATTERN}"
+          ) < /dev/null
+          echo "NOTE: Release ${RELEASE}'s tests of what its own page shows were not run: the test environment serves the new page. They are the part of this check that is still missing."
+
       - name: This Release is verified; earlier ones still waiting for approval are superseded
         env:
           GH_TOKEN: ${{ github.token }}
